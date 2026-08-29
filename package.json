@@ -1,14 +1,19 @@
 {
   "name": "opencode-cost-details",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "OpenCode TUI plugin: adds current and previous turn cost to the sidebar Context section",
   "type": "module",
   "exports": {
-    "./tui": "./src/tui.tsx"
+    "./tui": "./dist/tui.js"
   },
   "files": [
-    "src"
+    "dist"
   ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc",
+    "prepublishOnly": "npm run typecheck && npm run build"
+  },
   "keywords": [
     "opencode",
     "opencode-plugin",
@@ -26,9 +31,12 @@
     "opencode": ">=1.18.0"
   },
   "devDependencies": {
+    "@babel/core": "^7.28.0",
+    "@babel/preset-typescript": "^7.27.1",
     "@opencode-ai/plugin": "1.18.25",
     "@opentui/core": "^0.5.9",
     "@opentui/solid": "^0.5.9",
+    "babel-preset-solid": "^1.9.12",
     "solid-js": "^1.9.15",
     "typescript": "^5.9.3"
   }
