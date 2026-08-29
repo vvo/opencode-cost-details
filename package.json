@@ -26,6 +26,10 @@
     "opencode": ">=1.18.0"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "1.18.25"
+    "@opencode-ai/plugin": "1.18.25",
+    "@opentui/core": "^0.5.9",
+    "@opentui/solid": "^0.5.9",
+    "solid-js": "^1.9.15",
+    "typescript": "^5.9.3"
   }
 }
