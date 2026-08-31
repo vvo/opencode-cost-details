@@ -1,6 +1,14 @@
 /** @jsxImportSource @opentui/solid */
 import { createSignal, type Accessor } from "solid-js"
-import { computeTurns, type Child, type Entry, type Turns } from "./turns.js"
+import {
+  computeContext,
+  computeTurns,
+  type Child,
+  type Context as ContextSize,
+  type ContextMessage,
+  type Entry,
+  type Turns,
+} from "./turns.js"
 
 // One object satisfies both hosts. opencode 1 validates `tui`, opencode 2
 // validates `setup`, and neither rejects the other's key. Nothing is imported
@@ -39,17 +47,40 @@ function createTracker(): Tracker {
   }
 }
 
-/** Shared view: a single line appended under the host's Context block. */
+/**
+ * The whole sidebar Context block: the host's three lines plus our turn costs,
+ * so all four read as one group. Replaces the built-in section, which the user
+ * disables with `-opencode.sidebar.context` (`-internal:sidebar-context` on
+ * opencode 1).
+ */
 // opencode 1 hands out RGBA theme values, opencode 2 hands out strings; the
 // opentui `fg` prop accepts either.
-function CostLine(props: { turns: () => Turns; fg: string | RGBA }) {
-  const visible = () => props.turns().current > 0 || props.turns().previous > 0
+function ContextBlock(props: {
+  context: () => ContextSize | undefined
+  spent: () => number
+  turns: () => Turns
+  fg: string | RGBA
+  headerFg: string | RGBA
+}) {
+  // Same condition as the host: show up to the first sign of activity.
+  const visible = () => props.context() !== undefined || props.spent() > 0
+  const costs = () => props.turns().current > 0 || props.turns().previous > 0
   return (
     <>
       {visible() ? (
-        <text fg={props.fg}>
-          current {money.format(props.turns().current)}, previous {money.format(props.turns().previous)}
-        </text>
+        <box>
+          <text fg={props.headerFg}>
+            <b>Context</b>
+          </text>
+          {props.context() ? <text fg={props.fg}>{props.context()!.tokens.toLocaleString()} tokens</text> : null}
+          {props.context()?.percent !== undefined ? <text fg={props.fg}>{props.context()!.percent}% used</text> : null}
+          {props.spent() > 0 ? <text fg={props.fg}>{money.format(props.spent())} spent</text> : null}
+          {costs() ? (
+            <text fg={props.fg}>
+              current {money.format(props.turns().current)}, previous {money.format(props.turns().previous)}
+            </text>
+          ) : null}
+        </box>
       ) : null}
     </>
   )
@@ -133,13 +164,42 @@ function setup(context: Context) {
     tracker.bump()
   })
 
+  // `prepend`, not `append`: the built-in MCP section is an `append` claim, and
+  // claims render before -> [prepend, append] -> after. Since builtins register
+  // ahead of config plugins, appending would always land us below MCP. This puts
+  // the block back where the built-in Context section was.
   const unslot = context.ui.slot({
-    append: "sidebar.content",
+    prepend: "sidebar.content",
     render: ({ sessionID }) => {
+      const messages = () => context.data.session.message.list(sessionID)
+      const session = () => context.data.session.get(sessionID)
+
+      const size = () => {
+        const list: ContextMessage[] = messages().map((message) => ({
+          id: message.id,
+          assistant: message.type === "assistant",
+          compacted: message.type === "compaction" && message.status === "completed",
+          tokens: "tokens" in message ? message.tokens : undefined,
+        }))
+        // The model has to match on both halves of the ref; ids repeat across providers.
+        const model = session()?.model
+        const limit = model
+          ? context.data.location.model
+              .list(session()?.location)
+              ?.find((m) => m.providerID === model.providerID && m.id === model.id)?.limit.context
+          : undefined
+        return computeContext(list, limit, session()?.revert?.messageID)
+      }
+
+      // The host's own total. It under-reports nested subagents, but disagreeing
+      // with opencode inside a block we render would be worse; our turn line
+      // carries the fuller figure.
+      const spent = () => context.data.session.cost(sessionID)
+
       const turns = () => {
         const tracker = track(sessionID)
         tracker.version()
-        const live = context.data.session.message.list(sessionID).map((message) => ({
+        const live = messages().map((message) => ({
           id: message.id,
           user: message.type === "user",
           cost: "cost" in message ? (message.cost ?? 0) : 0,
@@ -147,7 +207,16 @@ function setup(context: Context) {
         }))
         return computeTurns([...tracker.history.values(), ...live], tracker.children.values())
       }
-      return <CostLine turns={turns} fg={context.theme.text.subdued} />
+
+      return (
+        <ContextBlock
+          context={size}
+          spent={spent}
+          turns={turns}
+          fg={context.theme.text.subdued}
+          headerFg={context.theme.text.default}
+        />
+      )
     },
   })
 
@@ -166,6 +235,9 @@ type V1Message = {
   role: string
   cost?: number
   time: { created: number }
+  providerID?: string
+  modelID?: string
+  tokens?: { input: number; output: number; reasoning: number; cache: { read: number; write: number } }
 }
 
 async function backfillV1(api: TuiPluginApi, sessionID: string, tracker: Tracker) {
@@ -196,6 +268,9 @@ async function backfillV1(api: TuiPluginApi, sessionID: string, tracker: Tracker
   tracker.bump()
 }
 
+/** The built-in sidebar Context section on opencode 1. */
+const V1_CONTEXT = "internal:sidebar-context"
+
 const tui: TuiPlugin = async (api) => {
   if (typeof api.slots?.register !== "function") {
     api.ui?.toast({
@@ -203,6 +278,19 @@ const tui: TuiPlugin = async (api) => {
       message: "opencode-cost-details needs a newer opencode (sidebar slots unavailable)",
     })
     return
+  }
+
+  // We render the built-in section's three lines ourselves, so hide the original
+  // to avoid showing it twice. opencode 1 lets a plugin do this to itself, and
+  // restores it on dispose so removing the plugin brings the stock sidebar back.
+  // opencode 2 dropped this API; there the user adds `-opencode.sidebar.context`
+  // to cli.json instead.
+  const internal = api.plugins?.list?.().find((p) => p.id === V1_CONTEXT)
+  if (internal) {
+    if (internal.active) await api.plugins.deactivate(V1_CONTEXT)
+    api.lifecycle.onDispose(async () => {
+      await api.plugins.activate(V1_CONTEXT)
+    })
   }
 
   const trackers = new Map<string, Tracker>()
@@ -227,25 +315,51 @@ const tui: TuiPlugin = async (api) => {
     }),
   )
 
-  // The built-in sidebar sections use order 100 (context) through 500 (files).
-  // 150 puts the line just under Context, where opencode 2's
-  // `append: "sidebar.content"` also puts it.
+  // 100 is where the built-in Context section sat, so we take its place in the
+  // ordering once the user disables it with `-internal:sidebar-context`.
   api.slots.register({
-    order: 150,
+    order: 100,
     slots: {
       sidebar_content(_ctx, props) {
-          const turns = () => {
-            const tracker = track(props.session_id)
-            tracker.version()
-            const live = (api.state.session.messages(props.session_id) as readonly V1Message[]).map((message) => ({
-              id: message.id,
-              user: message.role === "user",
-              cost: message.cost ?? 0,
-              created: message.time.created,
-            }))
-            return computeTurns([...tracker.history.values(), ...live], tracker.children.values())
-          }
-          return <CostLine turns={turns} fg={api.theme.current.textMuted} />
+        const messages = () => api.state.session.messages(props.session_id) as readonly V1Message[]
+
+        // opencode 1 computes this differently from opencode 2: newest assistant
+        // message with output, and no compaction or revert handling. Match the
+        // host we are running on rather than sharing one implementation.
+        const size = () => {
+          const latest = messages().findLast((m) => m.role === "assistant" && (m.tokens?.output ?? 0) > 0)
+          if (!latest?.tokens) return undefined
+          const t = latest.tokens
+          const tokens = t.input + t.output + t.reasoning + t.cache.read + t.cache.write
+          if (tokens <= 0) return undefined
+          const limit = api.state.provider.find((p) => p.id === latest.providerID)?.models[latest.modelID!]?.limit
+            .context
+          return { tokens, percent: limit ? Math.round((tokens / limit) * 100) : undefined }
+        }
+
+        const spent = () => api.state.session.get(props.session_id)?.cost ?? 0
+
+        const turns = () => {
+          const tracker = track(props.session_id)
+          tracker.version()
+          const live = messages().map((message) => ({
+            id: message.id,
+            user: message.role === "user",
+            cost: message.cost ?? 0,
+            created: message.time.created,
+          }))
+          return computeTurns([...tracker.history.values(), ...live], tracker.children.values())
+        }
+
+        return (
+          <ContextBlock
+            context={size}
+            spent={spent}
+            turns={turns}
+            fg={api.theme.current.textMuted}
+            headerFg={api.theme.current.text}
+          />
+        )
       },
     },
   })

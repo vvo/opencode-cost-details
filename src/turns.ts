@@ -1,6 +1,6 @@
 /**
- * Turn cost math, kept free of any host API so it can be unit tested and shared
- * by the opencode 1 and opencode 2 entrypoints.
+ * Turn cost and context math, kept free of any host API so it can be unit
+ * tested and shared by the opencode 1 and opencode 2 entrypoints.
  */
 
 export type Entry = {
@@ -50,5 +50,61 @@ export function computeTurns(entries: Iterable<Entry>, children: Iterable<Child>
   return {
     current: turns.at(-1)?.cost ?? 0,
     previous: turns.at(-2)?.cost ?? 0,
+  }
+}
+
+export type TokenUsage = {
+  input: number
+  output: number
+  reasoning: number
+  cache: { read: number; write: number }
+}
+
+/** One message, reduced to what the context calculation needs. */
+export type ContextMessage = {
+  id: string
+  /** True for an assistant message that reported token usage. */
+  assistant: boolean
+  /** True for a compaction message that finished; everything before it is out of context. */
+  compacted: boolean
+  tokens?: TokenUsage
+}
+
+export type Context = {
+  tokens: number
+  /** Undefined when the model reports no context limit. */
+  percent?: number
+}
+
+/**
+ * Context size as opencode itself computes it, so the numbers we render match
+ * the ones the host would have shown.
+ *
+ * Reads the newest assistant message that reported tokens, ignoring anything at
+ * or before the last completed compaction (those tokens are no longer in
+ * context) and anything at or after a revert point. Returns undefined when
+ * there is nothing to show, which is also how the host decides to hide the line.
+ */
+export function computeContext(
+  messages: readonly ContextMessage[],
+  limit: number | undefined,
+  revertMessageID?: string,
+): Context | undefined {
+  const revertAt = revertMessageID ? messages.findIndex((m) => m.id === revertMessageID) : -1
+  // A revert pointing at a message we have not loaded means we cannot trust any of it.
+  if (revertMessageID && revertAt === -1) return undefined
+
+  const end = revertAt === -1 ? messages.length : revertAt
+  const compactedAt = messages.findLastIndex((m, i) => m.compacted && i < end)
+  const latest = messages.findLast((m, i) => m.assistant && m.tokens !== undefined && i > compactedAt && i < end)
+  if (!latest?.tokens) return undefined
+
+  const t = latest.tokens
+  const tokens = t.input + t.output + t.reasoning + t.cache.read + t.cache.write
+  if (tokens <= 0) return undefined
+
+  return {
+    tokens,
+    percent: limit ? Math.round((tokens / limit) * 100) : undefined,
   }
 }

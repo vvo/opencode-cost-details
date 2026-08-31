@@ -19,11 +19,15 @@ Works on both opencode 1 and opencode 2 from the same version.
 
 ## Install
 
-opencode 2:
+opencode 2, in `~/.config/opencode/cli.json`:
 
-```sh
-opencode2 plugin add opencode-cost-details
+```json
+{
+  "plugins": ["-opencode.sidebar.context", "opencode-cost-details"]
+}
 ```
+
+The `-opencode.sidebar.context` entry hides the built-in Context section, which this plugin renders itself. Without it you get the section twice. opencode 2 has no API for a plugin to hide a built-in section on its own.
 
 opencode 1, in `~/.config/opencode/tui.json` (TUI plugins are configured there, not in `opencode.json`):
 
@@ -33,13 +37,17 @@ opencode 1, in `~/.config/opencode/tui.json` (TUI plugins are configured there, 
 }
 ```
 
+No extra entry needed there: opencode 1 lets the plugin hide the built-in section itself, and restores it if you remove the plugin.
+
 Then restart opencode.
 
-Subagent (task tool) spend is included in the turn costs.
+Subagent (task tool) spend is included in the turn costs, which is usually the difference between this line and the `spent` total above it.
+
+opencode 1 leaves subagent spend out of that total entirely. opencode 2 adds it, but only for the subagent sessions it has already loaded, and only one level deep, so a session with nested subagents still reads low.
 
 ## How it works
 
-The plugin appends one line to the built-in sidebar Context section. It does not replace it, so tokens, percent used, and total spent stay exactly as opencode reports them.
+The plugin renders the sidebar Context section itself: the same tokens, percent used, and spent lines opencode shows, plus the turn costs, so all four read as one group. The token and cost figures are computed the way the host computes them, and verified against the built-in section.
 
 A turn starts at every user message. Costs come from the TUI's own message state, which updates live while the agent works. Because that state only keeps the most recent messages (20 on opencode 2), the plugin also backfills the last two turns from the server on first render of a session, and fetches subagent sessions with their costs.
 
@@ -55,7 +63,7 @@ The default export is `{ id, tui, setup }`. opencode 1 validates and calls `tui`
 
 - Models without pricing metadata show $0.00.
 - A subagent's cost is attributed to the turn that created it. If a later turn resumes the same subagent, that extra spend still lands on the creation turn.
-- Only direct subagents are counted; a subagent's own subagents are not.
+- Only direct subagents are counted; a subagent's own subagents are not. opencode has the same limit: it fetches children by `parentID`, one level deep.
 - A `$` shell command counts as its own turn, because opencode records it as a user message.
 - The line is hidden until a turn has a non-zero cost, so a fresh session shows nothing.
 

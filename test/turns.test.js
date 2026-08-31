@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { computeTurns } from "../dist/turns.js"
+import { computeContext, computeTurns } from "../dist/turns.js"
 
 const user = (id, created) => ({ id, user: true, cost: 0, created })
 const msg = (id, created, cost) => ({ id, user: false, cost, created })
@@ -50,4 +50,56 @@ test("attributes a subagent to the turn open when it started", () => {
 
 test("drops a subagent that predates every turn", () => {
   assert.deepEqual(computeTurns([user("1", 1)], [{ cost: 1, created: 0 }]), { current: 0, previous: 0 })
+})
+
+const tokens = (n) => ({ input: n, output: 0, reasoning: 0, cache: { read: 0, write: 0 } })
+const reply = (id, n) => ({ id, assistant: true, compacted: false, tokens: tokens(n) })
+
+test("no messages means nothing to render", () => {
+  assert.equal(computeContext([], 1000), undefined)
+})
+
+test("sums every token bucket", () => {
+  const m = { id: "1", assistant: true, compacted: false, tokens: { input: 1, output: 2, reasoning: 4, cache: { read: 8, write: 16 } } }
+  assert.deepEqual(computeContext([m], undefined), { tokens: 31, percent: undefined })
+})
+
+test("reads the newest assistant message", () => {
+  assert.deepEqual(computeContext([reply("1", 100), reply("2", 200)], 1000), { tokens: 200, percent: 20 })
+})
+
+test("ignores messages without token usage", () => {
+  const pending = { id: "2", assistant: true, compacted: false }
+  assert.deepEqual(computeContext([reply("1", 100), pending], 1000), { tokens: 100, percent: 10 })
+})
+
+test("omits percent when the model has no context limit", () => {
+  assert.deepEqual(computeContext([reply("1", 100)], undefined), { tokens: 100, percent: undefined })
+})
+
+test("ignores anything at or before a completed compaction", () => {
+  const messages = [
+    reply("1", 900),
+    { id: "2", assistant: false, compacted: true },
+    reply("3", 50),
+  ]
+  assert.deepEqual(computeContext(messages, 1000), { tokens: 50, percent: 5 })
+})
+
+test("hides itself when compaction is the newest message", () => {
+  const messages = [reply("1", 900), { id: "2", assistant: false, compacted: true }]
+  assert.equal(computeContext(messages, 1000), undefined)
+})
+
+test("ignores messages at or after a revert point", () => {
+  const messages = [reply("1", 100), reply("2", 900)]
+  assert.deepEqual(computeContext(messages, 1000, "2"), { tokens: 100, percent: 10 })
+})
+
+test("hides itself when the revert target is not loaded", () => {
+  assert.equal(computeContext([reply("1", 100)], 1000, "nope"), undefined)
+})
+
+test("hides itself when the newest usage is zero", () => {
+  assert.equal(computeContext([reply("1", 0)], 1000), undefined)
 })

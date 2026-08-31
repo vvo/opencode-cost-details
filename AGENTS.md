@@ -5,10 +5,11 @@ block. One published package serves both opencode 1 and opencode 2.
 
 ## Layout
 
-- `src/turns.ts` — the turn/subagent cost math. Pure, host-agnostic, unit tested.
-  Put logic here rather than in the host adapters.
-- `src/tui.tsx` — the shared `CostLine` view plus two thin adapters: `tui(api)`
-  for opencode 1, `setup(context)` for opencode 2.
+- `src/turns.ts` — the turn/subagent cost math and the opencode 2 context
+  calculation. Pure, host-agnostic, unit tested. Put logic here rather than in
+  the host adapters.
+- `src/tui.tsx` — the shared `ContextBlock` view plus two thin adapters:
+  `tui(api)` for opencode 1, `setup(context)` for opencode 2.
 - `test/turns.test.js` — runs against the **built** `dist/turns.js`, not `src/`.
 - `scripts/build.mjs` — compiles every module listed in its `modules` array. Add
   new `src/` files there or they will not be emitted.
@@ -28,6 +29,26 @@ block. One published package serves both opencode 1 and opencode 2.
   commit it.
 - **Requires Node 24+.** `node --test <dir>` fails on Node 22+, so the test
   script names the test file explicitly. Do not "simplify" it back to a directory.
+- **We render the whole Context section, so the token math has to match the
+  host's.** The two hosts differ: opencode 2 reads the newest assistant message
+  with `tokens` defined, skips anything at or before the last completed
+  compaction, and honours `revert.messageID` (that is `computeContext` in
+  `turns.ts`). opencode 1 just reads the newest assistant message with
+  `output > 0`. Each adapter matches its own host; do not unify them.
+- **Hiding the built-in section differs per host.** opencode 1 still has
+  `api.plugins.deactivate`, so the plugin hides `internal:sidebar-context`
+  itself. opencode 2 dropped that API, and `replace: "sidebar.content"` would
+  also suppress the MCP section, so there the user adds
+  `-opencode.sidebar.context` to `cli.json`.
+- **The opencode 2 claim is `prepend`, not `append`.** The built-in MCP section
+  is an `append` claim and builtins register before config plugins, so appending
+  puts our block below MCP.
+- **Do not drop the subagent fetch in favour of the host's own cost.** On
+  opencode 1 the built-in total is `session.get(id).cost`, the root session
+  alone. On opencode 2 `data.session.cost()` sums the session family, but that
+  family only holds sessions the host has loaded and it fetches children by
+  `parentID` one level deep. Either way the built-in `spent` under-reports, so
+  the plugin fetches children itself to get the per-turn number right.
 
 ## Verifying a change for real
 
