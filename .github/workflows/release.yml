@@ -1,0 +1,56 @@
+# Publishes to npm with trusted publishing (OIDC). No NPM_TOKEN anywhere.
+#
+# The npm trusted publisher must be configured with this exact filename
+# (release.yml) at npmjs.com -> opencode-cost-details -> Settings ->
+# Trusted publishing. npm does not validate that config on save, so a mismatch
+# only shows up here as an ENEEDAUTH failure.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Reset the default token scope, then grant per job.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # commit the version bump, push tags, create the release
+      pull-requests: write # open/update the "Version Packages" PR
+      id-token: write # mint the OIDC token npm exchanges for a publish token
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Node 24 ships npm 11.x, and OIDC publishing needs npm >= 11.5.1.
+      # Node 22 ships npm 10.9.x, which is too old, so this pin replaces the
+      # `npm install -g npm@latest` step most guides add.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          # Writes the .npmrc pointing at the npm registry. Required even with
+          # OIDC, but deliberately without NODE_AUTH_TOKEN: a token in the
+          # environment would take precedence over OIDC.
+          registry-url: https://registry.npmjs.org/
+          package-manager-cache: false # never cache in a release build
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      # With changesets present: opens/updates the version PR.
+      # With none present (the version PR just merged): runs publish-script.
+      # v2 is required for OIDC; v1 always writes an NPM_TOKEN .npmrc, which
+      # blocks npm's OIDC auto-detection. Pinned by SHA because upstream only
+      # ships a mutable `v2` branch, not a floating `v2` tag.
+      - uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
+        with:
+          publish-script: npm run release
+          commit-message: "release: version packages"
+          pr-title: "release: version packages"
