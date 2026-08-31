@@ -15,33 +15,68 @@ current $0.12, previous $0.31
 
 Useful to spot when a single question burns way more money than expected.
 
+Works on both opencode 1 and opencode 2 from the same version.
+
 ## Install
 
+opencode 2:
+
 ```sh
-opencode plugin opencode-cost-details
+opencode2 plugin add opencode-cost-details
+```
+
+opencode 1, in `~/.config/opencode/tui.json` (TUI plugins are configured there, not in `opencode.json`):
+
+```json
+{
+  "plugin": ["opencode-cost-details"]
+}
 ```
 
 Then restart opencode.
 
-Subagent (task tool) spend is included, both in turn costs and in the total. The stock sidebar total leaves it out ([upstream issue](https://github.com/anomalyco/opencode/issues/45417)).
+Subagent (task tool) spend is included in the turn costs.
 
 ## How it works
 
-The plugin replaces the built-in sidebar Context section with an identical one plus a per-turn cost line.
+The plugin appends one line to the built-in sidebar Context section. It does not replace it, so tokens, percent used, and total spent stay exactly as opencode reports them.
 
-A turn starts at every user message. Costs come from the TUI's own message state, which updates live while the agent works. On first render of a session the plugin also backfills the last two turns from the server (paginated, so turns with 100+ messages are counted fully, unlike the TUI's 100-message window) and fetches subagent sessions with their costs, then follows subagent spend through `session.updated`.
+A turn starts at every user message. Costs come from the TUI's own message state, which updates live while the agent works. Because that state only keeps the most recent messages (20 on opencode 2), the plugin also backfills the last two turns from the server on first render of a session, and fetches subagent sessions with their costs.
 
-`exports["./tui"]` points at prebuilt JS, not the `.tsx` source. opencode's Solid JSX transform skips any path containing `node_modules`, and that is where `opencode plugin` installs packages, so a plugin shipping JSX source never loads.
+Subagent spend is followed through `session.usage.updated` on opencode 2 and `session.updated` on opencode 1.
 
-It deactivates the built-in `internal:sidebar-context` plugin on startup and re-activates it when the plugin is disabled (via `/plugins`) or opencode shuts down, so removing the plugin restores the stock sidebar. No config needed.
+### One package, both hosts
+
+The default export is `{ id, tui, setup }`. opencode 1 validates and calls `tui`, opencode 2 validates and calls `setup`, and neither rejects the other's key. Nothing is imported from `@opencode-ai/plugin` at runtime: on opencode 2 that specifier is remapped to a host builtin, but on opencode 1 it resolves to the real npm package, where the v2 exports do not exist.
+
+`exports["./tui"]` points at prebuilt JS, not the `.tsx` source. opencode's Solid JSX transform skips any path containing `node_modules`, and that is where plugins get installed, so a plugin shipping JSX source never loads. `@opentui/solid` and `solid-js` are peer dependencies but marked optional, because both hosts remap those imports to their own bundled copies — installing them is unnecessary and would risk a second Solid instance.
 
 ## Caveats
 
 - Models without pricing metadata show $0.00.
 - A subagent's cost is attributed to the turn that created it. If a later turn resumes the same subagent, that extra spend still lands on the creation turn.
 - Only direct subagents are counted; a subagent's own subagents are not.
-- `spent` includes subagent costs, so it reads higher than opencode's built-in total.
 - A `$` shell command counts as its own turn, because opencode records it as a user message.
+- The line is hidden until a turn has a non-zero cost, so a fresh session shows nothing.
+
+## Development
+
+```sh
+npm run typecheck
+npm test        # builds, then runs the turn-math unit tests
+```
+
+Node 24 or newer. `node --test` rejects a bare directory argument on Node 22+, so the test script names the file explicitly.
+
+To load a local checkout, point the config at the directory. opencode 2 additionally requires an `index.js` next to `tui.js` for a directory target, which the published package does not need since it resolves through `exports["./tui"]`.
+
+## Releasing
+
+Releases are automated with [Changesets](https://changesets.dev) and published to npm with [trusted publishing](https://docs.npmjs.com/trusted-publishers), so there is no npm token in this repo.
+
+1. In your PR, run `npx changeset`, pick the bump, and commit the generated `.changeset/*.md`. No changeset means no release, which is correct for docs, tests, and tooling changes.
+2. On merge to `main`, CI opens a **release: version packages** PR applying the bump and updating `CHANGELOG.md`.
+3. Merging that PR publishes to npm and creates the GitHub release.
 
 ## License
 
