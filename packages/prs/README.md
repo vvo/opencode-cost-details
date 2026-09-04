@@ -4,7 +4,7 @@
 
 ![Open pull requests in the OpenCode sidebar](../../assets/prs.png)
 
-The sidebar section is collapsible. Each compact row links to GitHub and shows whether the pull request is draft, open, or merged.
+The sidebar section is collapsible. Each compact row links to GitHub and shows whether the pull request is draft, open, or merged. Hover a clipped title to scroll through its full text.
 
 ## Install
 

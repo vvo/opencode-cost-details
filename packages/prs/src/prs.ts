@@ -32,3 +32,10 @@ export function uniquePullRequests(refs: Iterable<PullRequestRef>): PullRequestR
 export function truncate(value: string, max: number): string {
   return value.length <= max ? value : `${value.slice(0, Math.max(0, max - 1))}…`
 }
+
+export function marquee(value: string, width: number, offset: number): string {
+  if (width <= 0) return ""
+  if (value.length <= width) return value
+  const loop = `${value}   `
+  return Array.from({ length: width }, (_, index) => loop[(offset + index) % loop.length]).join("")
+}

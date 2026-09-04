@@ -8,8 +8,8 @@ import type { Plugin } from "plugin-v2/tui"
 import {
   extractPullRequests,
   extractCreatedPullRequests,
+  marquee,
   pullRequestStatus,
-  truncate,
   uniquePullRequests,
   type PullRequest,
   type PullRequestRef,
@@ -19,8 +19,49 @@ const execFileAsync = promisify(execFile)
 const REFRESH_MS = 60_000
 const MAX_HISTORY_PAGES = 50
 const MAX_VISIBLE_PRS = 5
+const MARQUEE_DELAY_MS = 500
+const MARQUEE_STEP_MS = 120
 type Context = Plugin.Context
 type Message = { type?: string; content?: unknown[] }
+
+function PullRequestRow(props: { pr: PullRequest; subdued: string | RGBA; link: string | RGBA }) {
+  const [hovered, setHovered] = createSignal(false)
+  const [width, setWidth] = createSignal(1)
+  const [offset, setOffset] = createSignal(0)
+  let delay: ReturnType<typeof setTimeout> | undefined
+  let interval: ReturnType<typeof setInterval> | undefined
+
+  createEffect(() => {
+    clearTimeout(delay)
+    clearInterval(interval)
+    setOffset(0)
+    if (!hovered() || props.pr.title.length <= width()) return
+    delay = setTimeout(() => {
+      interval = setInterval(() => setOffset((value) => value + 1), MARQUEE_STEP_MS)
+    }, MARQUEE_DELAY_MS)
+  })
+  onCleanup(() => {
+    clearTimeout(delay)
+    clearInterval(interval)
+  })
+
+  return (
+    <box
+      flexDirection="row"
+      minWidth={0}
+      onMouseOver={() => setHovered(true)}
+      onMouseOut={() => setHovered(false)}
+    >
+      <text fg={props.subdued} flexShrink={0}>• </text>
+      <box flexGrow={1} minWidth={0} overflow="hidden" onSizeChange={function () { setWidth(this.width) }}>
+        <text fg={props.link} wrapMode="none"><a href={props.pr.url}>{marquee(props.pr.title, width(), offset())}</a></text>
+      </box>
+      <text fg={props.pr.state === "OPEN" && !props.pr.isDraft ? props.subdued : props.link} flexShrink={0}>
+        {" "}{pullRequestStatus(props.pr)}
+      </text>
+    </box>
+  )
+}
 
 async function fetchPullRequest(ref: PullRequestRef): Promise<PullRequest | undefined> {
   try {
@@ -132,12 +173,7 @@ function PullRequests(props: {
         <Show when={unavailable()}><text fg={props.subdued}>GitHub unavailable</text></Show>
         <Show when={!unavailable() && prs().length === 0}><text fg={props.subdued}>No PRs</text></Show>
         <For each={visiblePrs()}>{(pr) => (
-          <text fg={props.subdued} wrapMode="none">
-            • <a href={pr.url}>{truncate(pr.title, 32)}</a>{" "}
-            <span style={{ fg: pr.state === "OPEN" && !pr.isDraft ? props.subdued : props.link }}>
-              {pullRequestStatus(pr)}
-            </span>
-          </text>
+          <PullRequestRow pr={pr} subdued={props.subdued} link={props.link} />
         )}</For>
         <Show when={hiddenCount() > 0}><text fg={props.subdued}>+{hiddenCount()} more</text></Show>
       </Show>
