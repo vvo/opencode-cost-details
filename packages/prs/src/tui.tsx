@@ -16,6 +16,7 @@ import {
 } from "./prs.js"
 
 const execFileAsync = promisify(execFile)
+const REFRESH_MS = 60_000
 const MAX_HISTORY_PAGES = 50
 const MAX_VISIBLE_PRS = 10
 const MARQUEE_DELAY_MS = 500
@@ -265,8 +266,10 @@ function PullRequests(props: {
       cache.history = value
       void refresh(true)
     })
+    const interval = setInterval(() => void refresh(true), REFRESH_MS)
     onCleanup(() => {
       mounted = false
+      clearInterval(interval)
     })
   })
   return (
