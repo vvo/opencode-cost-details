@@ -23,12 +23,6 @@ async function fetchPullRequest(ref: PullRequestRef): Promise<PullRequest | unde
   }
 }
 
-function openUrl(url: string) {
-  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open"
-  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url]
-  execFile(command, args, () => {})
-}
-
 function textFromV2(messages: readonly Message[]): string {
   const chunks: string[] = []
   for (const message of messages) {
@@ -118,7 +112,7 @@ function PullRequests(props: {
         <Show when={unavailable()}><text fg={props.subdued}>GitHub unavailable</text></Show>
         <Show when={!unavailable() && prs().length === 0}><text fg={props.subdued}>No open PRs</text></Show>
         <For each={prs()}>{(pr) => (
-          <text fg={props.link} onMouseUp={() => openUrl(pr.url)}>#{pr.number} {truncate(pr.title, 42)}</text>
+          <text fg={props.link}><a href={pr.url}>#{pr.number} {truncate(pr.title, 42)}</a></text>
         )}</For>
       </Show>
     </box>
