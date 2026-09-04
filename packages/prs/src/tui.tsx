@@ -16,7 +16,6 @@ import {
 } from "./prs.js"
 
 const execFileAsync = promisify(execFile)
-const REFRESH_MS = 60_000
 const MAX_HISTORY_PAGES = 50
 const MAX_VISIBLE_PRS = 5
 const MARQUEE_DELAY_MS = 500
@@ -27,8 +26,6 @@ type SessionCache = {
   history: PullRequestRef[]
   historyPromise?: Promise<PullRequestRef[]>
   prs: PullRequest[]
-  refsKey: string
-  refreshedAt: number
   unavailable: boolean
   refreshPromise?: Promise<void>
 }
@@ -38,7 +35,7 @@ const sessionCache = new Map<string, SessionCache>()
 function cacheFor(sessionID: string): SessionCache {
   let cache = sessionCache.get(sessionID)
   if (!cache) {
-    cache = { history: [], prs: [], refsKey: "", refreshedAt: 0, unavailable: false }
+    cache = { history: [], prs: [], unavailable: false }
     sessionCache.set(sessionID, cache)
   }
   return cache
@@ -172,19 +169,12 @@ function PullRequests(props: {
     setPrs(cache.prs)
     setUnavailable(cache.unavailable)
   }
-  const refresh = async (force = false) => {
+  const refresh = async () => {
     const refs = uniquePullRequests([...cache.history, ...props.refs()])
-    const refsKey = refs.map((ref) => ref.url).join("\n")
-    if (!force && refsKey === cache.refsKey && Date.now() - cache.refreshedAt < REFRESH_MS) {
-      showCache()
-      return
-    }
     if (!cache.refreshPromise) {
       cache.refreshPromise = Promise.all(refs.map(fetchPullRequest)).then((results) => {
         cache.unavailable = refs.length > 0 && results.every((result) => result === undefined)
         cache.prs = results.filter((result): result is PullRequest => result !== undefined && result.state !== "CLOSED")
-        cache.refsKey = refsKey
-        cache.refreshedAt = Date.now()
       }).finally(() => {
         cache.refreshPromise = undefined
       })
@@ -202,10 +192,8 @@ function PullRequests(props: {
       cache.history = value
       void refresh()
     })
-    const interval = setInterval(() => void refresh(true), REFRESH_MS)
     onCleanup(() => {
       mounted = false
-      clearInterval(interval)
     })
   })
   return (
