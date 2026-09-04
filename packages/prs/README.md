@@ -2,9 +2,9 @@
 
 [OpenCode](https://opencode.ai) TUI plugin that lists GitHub pull requests opened by the current session.
 
-![Open pull requests in the OpenCode sidebar](../../assets/prs.png)
+![Pull request titles scrolling on hover in the OpenCode sidebar](../../assets/prs-hover.gif)
 
-The sidebar section is collapsible. Each compact row links to GitHub and shows whether the pull request is draft, open, or merged. Hover a clipped title to scroll through its full text.
+The sidebar section is collapsible. Each compact row shows a muted PR number, linked title, and colored draft, open, or merged status. Hover a clipped title to scroll through its full text.
 
 ## Install
 
