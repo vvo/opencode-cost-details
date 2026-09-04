@@ -1,5 +1,11 @@
 # opencode-prs
 
+## 0.1.4
+
+### Patch Changes
+
+- ecd9b53: Add a copy action for Slack-ready PR summaries with status, diff counts, and confirmation feedback.
+
 ## 0.1.3
 
 ### Patch Changes
