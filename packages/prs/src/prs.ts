@@ -1,10 +1,24 @@
 export type PullRequestRef = { owner: string; repo: string; number: number; url: string }
-export type PullRequest = PullRequestRef & { title: string; state: "OPEN" | "CLOSED" | "MERGED"; isDraft: boolean }
+export type PullRequest = PullRequestRef & {
+  title: string
+  state: "OPEN" | "CLOSED" | "MERGED"
+  isDraft: boolean
+  createdAt: string
+}
 
 export function pullRequestStatus(pr: Pick<PullRequest, "state" | "isDraft">): "draft" | "open" | "merged" | "closed" {
   if (pr.state === "MERGED") return "merged"
   if (pr.state === "CLOSED") return "closed"
   return pr.isDraft ? "draft" : "open"
+}
+
+export function sortPullRequests(prs: PullRequest[]): PullRequest[] {
+  const rank = { open: 0, draft: 1, merged: 2, closed: 3 }
+  return [...prs].sort((left, right) => {
+    const status = rank[pullRequestStatus(left)] - rank[pullRequestStatus(right)]
+    if (status !== 0) return status
+    return Date.parse(right.createdAt) - Date.parse(left.createdAt)
+  })
 }
 
 const GITHUB_PR_URL = /https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)(?:\b|\/)/g

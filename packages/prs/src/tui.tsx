@@ -9,6 +9,7 @@ import {
   extractCreatedPullRequests,
   marquee,
   pullRequestStatus,
+  sortPullRequests,
   uniquePullRequests,
   type PullRequest,
   type PullRequestRef,
@@ -16,7 +17,7 @@ import {
 
 const execFileAsync = promisify(execFile)
 const MAX_HISTORY_PAGES = 50
-const MAX_VISIBLE_PRS = 5
+const MAX_VISIBLE_PRS = 10
 const MARQUEE_DELAY_MS = 500
 const MARQUEE_STEP_MS = 120
 type Context = Plugin.Context
@@ -57,7 +58,8 @@ function samePullRequest(left: PullRequest, right: PullRequest): boolean {
     left.url === right.url &&
     left.title === right.title &&
     left.state === right.state &&
-    left.isDraft === right.isDraft
+    left.isDraft === right.isDraft &&
+    left.createdAt === right.createdAt
   )
 }
 
@@ -148,8 +150,8 @@ function PullRequestRow(props: {
 
 async function fetchPullRequest(ref: PullRequestRef): Promise<PullRequest | undefined> {
   try {
-    const { stdout } = await execFileAsync("gh", ["pr", "view", ref.url, "--json", "title,state,url,number,isDraft"])
-    const data = JSON.parse(stdout) as Pick<PullRequest, "title" | "state" | "url" | "number" | "isDraft">
+    const { stdout } = await execFileAsync("gh", ["pr", "view", ref.url, "--json", "title,state,url,number,isDraft,createdAt"])
+    const data = JSON.parse(stdout) as Pick<PullRequest, "title" | "state" | "url" | "number" | "isDraft" | "createdAt">
     return { ...ref, ...data }
   } catch {
     return undefined
@@ -222,9 +224,8 @@ function PullRequests(props: {
   const [open, setOpen] = createSignal(true)
   const [prs, setPrs] = createSignal<PullRequest[]>(cache.prs)
   const [unavailable, setUnavailable] = createSignal(cache.unavailable)
-  const visiblePrs = () => prs().slice(-MAX_VISIBLE_PRS)
+  const visiblePrs = () => sortPullRequests(prs()).slice(0, MAX_VISIBLE_PRS)
   const numberWidth = () => Math.max(1, ...visiblePrs().map((pr) => String(pr.number).length))
-  const hiddenCount = () => prs().length - visiblePrs().length
   let mounted = true
   let observedRefsKey = pullRequestRefsKey(props.refs())
   const showCache = () => {
@@ -288,7 +289,6 @@ function PullRequests(props: {
             merged={props.merged}
           />
         )}</For>
-        <Show when={hiddenCount() > 0}><text fg={props.subdued}>+{hiddenCount()} more</text></Show>
       </Show>
     </box>
   )
