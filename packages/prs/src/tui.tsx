@@ -5,7 +5,14 @@ import { createEffect, createSignal, For, onCleanup, onMount, Show, type Accesso
 import type { RGBA } from "@opentui/core"
 import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
 import type { Plugin } from "plugin-v2/tui"
-import { extractPullRequests, truncate, uniquePullRequests, type PullRequest, type PullRequestRef } from "./prs.js"
+import {
+  extractPullRequests,
+  pullRequestStatus,
+  truncate,
+  uniquePullRequests,
+  type PullRequest,
+  type PullRequestRef,
+} from "./prs.js"
 
 const execFileAsync = promisify(execFile)
 const REFRESH_MS = 60_000
@@ -15,8 +22,8 @@ type Message = { type?: string; text?: string; content?: unknown[] }
 
 async function fetchPullRequest(ref: PullRequestRef): Promise<PullRequest | undefined> {
   try {
-    const { stdout } = await execFileAsync("gh", ["pr", "view", ref.url, "--json", "title,state,url,number"])
-    const data = JSON.parse(stdout) as Pick<PullRequest, "title" | "state" | "url" | "number">
+    const { stdout } = await execFileAsync("gh", ["pr", "view", ref.url, "--json", "title,state,url,number,isDraft"])
+    const data = JSON.parse(stdout) as Pick<PullRequest, "title" | "state" | "url" | "number" | "isDraft">
     return { ...ref, ...data }
   } catch {
     return undefined
@@ -79,6 +86,8 @@ function PullRequests(props: {
   foreground: string | RGBA
   subdued: string | RGBA
   link: string | RGBA
+  success: string | RGBA
+  warning: string | RGBA
 }) {
   const [open, setOpen] = createSignal(true)
   const [prs, setPrs] = createSignal<PullRequest[]>([])
@@ -88,7 +97,7 @@ function PullRequests(props: {
     const refs = uniquePullRequests(extractPullRequests(`${history}\n${props.text()}`))
     const results = await Promise.all(refs.map(fetchPullRequest))
     setUnavailable(refs.length > 0 && results.every((result) => result === undefined))
-    setPrs(results.filter((result): result is PullRequest => result?.state === "OPEN"))
+    setPrs(results.filter((result): result is PullRequest => result !== undefined && result.state !== "CLOSED"))
   }
   createEffect(() => {
     props.text()
@@ -110,9 +119,14 @@ function PullRequests(props: {
       </box>
       <Show when={open()}>
         <Show when={unavailable()}><text fg={props.subdued}>GitHub unavailable</text></Show>
-        <Show when={!unavailable() && prs().length === 0}><text fg={props.subdued}>No open PRs</text></Show>
+        <Show when={!unavailable() && prs().length === 0}><text fg={props.subdued}>No PRs</text></Show>
         <For each={prs()}>{(pr) => (
-          <text fg={props.link}><a href={pr.url}>#{pr.number} {truncate(pr.title, 42)}</a></text>
+          <text fg={props.subdued}>
+            • <a href={pr.url}>#{pr.number} {truncate(pr.title, 32)}</a>{" "}
+            <span style={{ fg: pr.state === "MERGED" ? props.success : pr.isDraft ? props.warning : props.subdued }}>
+              {pullRequestStatus(pr)}
+            </span>
+          </text>
         )}</For>
       </Show>
     </box>
@@ -130,6 +144,8 @@ function setup(context: Context) {
         foreground={context.theme.text.default}
         subdued={context.theme.text.subdued}
         link={context.theme.markdown.link}
+        success={context.theme.status.success}
+        warning={context.theme.status.warning}
       />
     ),
   })
@@ -147,6 +163,8 @@ const tui: TuiPlugin = async (api) => {
           foreground={api.theme.current.text}
           subdued={api.theme.current.textMuted}
           link={api.theme.current.markdownLink}
+          success={api.theme.current.success}
+          warning={api.theme.current.warning}
         />
       },
     },

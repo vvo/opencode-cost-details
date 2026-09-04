@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { extractPullRequests, truncate, uniquePullRequests } from "../dist/prs.js"
+import { extractPullRequests, pullRequestStatus, truncate, uniquePullRequests } from "../dist/prs.js"
 
 test("extracts and normalizes GitHub pull request links", () => {
   assert.deepEqual(extractPullRequests("See https://github.com/vvo/opencode-plugins/pull/12/files"), [{
@@ -15,3 +15,9 @@ test("removes duplicate pull requests", () => {
 })
 
 test("truncates long titles", () => assert.equal(truncate("a long title", 8), "a long …"))
+
+test("labels pull request states", () => {
+  assert.equal(pullRequestStatus({ state: "OPEN", isDraft: true }), "draft")
+  assert.equal(pullRequestStatus({ state: "OPEN", isDraft: false }), "open")
+  assert.equal(pullRequestStatus({ state: "MERGED", isDraft: false }), "merged")
+})

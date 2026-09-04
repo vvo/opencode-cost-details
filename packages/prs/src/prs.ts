@@ -1,5 +1,11 @@
 export type PullRequestRef = { owner: string; repo: string; number: number; url: string }
-export type PullRequest = PullRequestRef & { title: string; state: "OPEN" | "CLOSED" | "MERGED" }
+export type PullRequest = PullRequestRef & { title: string; state: "OPEN" | "CLOSED" | "MERGED"; isDraft: boolean }
+
+export function pullRequestStatus(pr: Pick<PullRequest, "state" | "isDraft">): "draft" | "open" | "merged" | "closed" {
+  if (pr.state === "MERGED") return "merged"
+  if (pr.state === "CLOSED") return "closed"
+  return pr.isDraft ? "draft" : "open"
+}
 
 const GITHUB_PR_URL = /https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)(?:\b|\/)/g
 
