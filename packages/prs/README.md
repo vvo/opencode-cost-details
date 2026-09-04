@@ -1,6 +1,6 @@
 # opencode-prs
 
-[OpenCode](https://opencode.ai) TUI plugin that lists GitHub pull requests referenced by the current session.
+[OpenCode](https://opencode.ai) TUI plugin that lists GitHub pull requests opened by the current session.
 
 ![Open pull requests in the OpenCode sidebar](../../assets/prs.png)
 
@@ -24,7 +24,7 @@ Then restart OpenCode. The plugin requires an installed and authenticated [GitHu
 
 ## How it works
 
-The plugin finds GitHub pull request URLs in visible user messages and assistant replies. It asks `gh` for the current title and state. Closed pull requests are hidden, while merged pull requests remain visible. The sidebar shows the five most recently referenced pull requests.
+The plugin finds successful `gh pr create` calls made by the session. It asks `gh` for the current title and state. Closed pull requests are hidden, while merged pull requests remain visible. The sidebar shows the five most recently opened pull requests.
 
 One published package supports OpenCode 1 and OpenCode 2.
 

@@ -20,6 +20,11 @@ export function extractPullRequests(text: string): PullRequestRef[] {
   return [...refs.values()]
 }
 
+export function extractCreatedPullRequests(command: string, output: string): PullRequestRef[] {
+  if (!/(?:^|[;&|\s])gh\s+pr\s+create(?:\s|$)/.test(command)) return []
+  return extractPullRequests(output)
+}
+
 export function uniquePullRequests(refs: Iterable<PullRequestRef>): PullRequestRef[] {
   return [...new Map([...refs].map((ref) => [ref.url, ref])).values()]
 }

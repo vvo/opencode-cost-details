@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { extractPullRequests, pullRequestStatus, truncate, uniquePullRequests } from "../dist/prs.js"
+import { extractCreatedPullRequests, extractPullRequests, pullRequestStatus, truncate, uniquePullRequests } from "../dist/prs.js"
 
 test("extracts and normalizes GitHub pull request links", () => {
   assert.deepEqual(extractPullRequests("See https://github.com/vvo/opencode-plugins/pull/12/files"), [{
@@ -20,4 +20,10 @@ test("labels pull request states", () => {
   assert.equal(pullRequestStatus({ state: "OPEN", isDraft: true }), "draft")
   assert.equal(pullRequestStatus({ state: "OPEN", isDraft: false }), "open")
   assert.equal(pullRequestStatus({ state: "MERGED", isDraft: false }), "merged")
+})
+
+test("only extracts pull requests created by gh", () => {
+  const url = "https://github.com/vvo/opencode-plugins/pull/7"
+  assert.equal(extractCreatedPullRequests("gh pr view 7", url).length, 0)
+  assert.equal(extractCreatedPullRequests("gh pr create --draft", url)[0].url, url)
 })

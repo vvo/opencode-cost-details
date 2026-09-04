@@ -2,4 +2,4 @@
 "opencode-prs": patch
 ---
 
-Use compact PR rows, show draft, open, and merged states, and ignore URLs hidden in tool output.
+Show compact draft, open, and merged rows for pull requests opened by the session.

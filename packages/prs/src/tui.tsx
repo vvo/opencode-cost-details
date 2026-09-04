@@ -7,6 +7,7 @@ import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
 import type { Plugin } from "plugin-v2/tui"
 import {
   extractPullRequests,
+  extractCreatedPullRequests,
   pullRequestStatus,
   truncate,
   uniquePullRequests,
@@ -19,7 +20,7 @@ const REFRESH_MS = 60_000
 const MAX_HISTORY_PAGES = 50
 const MAX_VISIBLE_PRS = 5
 type Context = Plugin.Context
-type Message = { type?: string; text?: string; content?: unknown[] }
+type Message = { type?: string; content?: unknown[] }
 
 async function fetchPullRequest(ref: PullRequestRef): Promise<PullRequest | undefined> {
   try {
@@ -31,61 +32,68 @@ async function fetchPullRequest(ref: PullRequestRef): Promise<PullRequest | unde
   }
 }
 
-function textFromV2(messages: readonly Message[]): string {
-  const chunks: string[] = []
+function refsFromV2(messages: readonly Message[]): PullRequestRef[] {
+  const refs: PullRequestRef[] = []
   for (const message of messages) {
-    if (message.type === "user" && typeof message.text === "string") chunks.push(message.text)
     if (message.type !== "assistant") continue
     for (const content of message.content ?? []) {
       if (!content || typeof content !== "object") continue
-      const part = content as { type?: string; text?: string }
-      if (part.type === "text" && typeof part.text === "string") chunks.push(part.text)
+      const part = content as {
+        type?: string
+        name?: string
+        state?: { status?: string; input?: { command?: string }; content?: unknown[] }
+      }
+      if (part.type !== "tool" || part.name !== "shell" || part.state?.status !== "completed") continue
+      refs.push(...extractCreatedPullRequests(part.state.input?.command ?? "", JSON.stringify(part.state.content)))
     }
   }
-  return chunks.join("\n")
+  return refs.flat()
 }
 
-function textFromV1(api: TuiPluginApi, sessionID: string): string {
-  const chunks: string[] = []
+function refsFromV1(api: TuiPluginApi, sessionID: string): PullRequestRef[] {
+  const refs: PullRequestRef[] = []
   for (const message of api.state.session.messages(sessionID)) {
-    if (message.role !== "user" && message.role !== "assistant") continue
     for (const part of api.state.part(message.id)) {
-      if (part.type === "text" && "text" in part) chunks.push(part.text)
+      if (part.type !== "tool" || part.tool !== "shell" || part.state.status !== "completed") continue
+      const input = part.state.input as { command?: string }
+      refs.push(...extractCreatedPullRequests(input.command ?? "", part.state.output))
     }
   }
-  return chunks.join("\n")
+  return refs.flat()
 }
 
-async function textFromV2History(context: Context, sessionID: string): Promise<string> {
-  const chunks: string[] = []
+async function refsFromV2History(context: Context, sessionID: string): Promise<PullRequestRef[]> {
+  const refs: PullRequestRef[] = []
   let cursor: string | undefined
   let page = 0
   do {
     const response = await context.client.message.list({ sessionID, limit: 200, ...(cursor ? { cursor } : {}) })
-    chunks.push(textFromV2(response.data as readonly Message[]))
+    refs.push(...refsFromV2(response.data as readonly Message[]))
     cursor = response.cursor.next ?? undefined
     page++
   } while (cursor && page < MAX_HISTORY_PAGES)
-  return chunks.join("\n")
+  return refs
 }
 
-async function textFromV1History(api: TuiPluginApi, sessionID: string): Promise<string> {
+async function refsFromV1History(api: TuiPluginApi, sessionID: string): Promise<PullRequestRef[]> {
   const response = await api.client.session.messages({ sessionID })
-  const chunks: string[] = []
+  const refs: PullRequestRef[] = []
   for (const item of response.data ?? []) {
-    const info = item.info as { role?: string; text?: string }
-    if (info.role !== "user" && info.role !== "assistant") continue
-    if (typeof info.text === "string") chunks.push(info.text)
-    for (const part of item.parts as { type?: string; text?: string }[]) {
-      if (part.type === "text" && typeof part.text === "string") chunks.push(part.text)
+    for (const part of item.parts as {
+      type?: string
+      tool?: string
+      state?: { status?: string; input?: { command?: string }; output?: string }
+    }[]) {
+      if (part.type !== "tool" || part.tool !== "shell" || part.state?.status !== "completed") continue
+      refs.push(...extractCreatedPullRequests(part.state.input?.command ?? "", part.state.output ?? ""))
     }
   }
-  return chunks.join("\n")
+  return refs.flat()
 }
 
 function PullRequests(props: {
-  text: Accessor<string>
-  history: () => Promise<string>
+  refs: Accessor<PullRequestRef[]>
+  history: () => Promise<PullRequestRef[]>
   foreground: string | RGBA
   subdued: string | RGBA
   link: string | RGBA
@@ -95,15 +103,15 @@ function PullRequests(props: {
   const [unavailable, setUnavailable] = createSignal(false)
   const visiblePrs = () => prs().slice(-MAX_VISIBLE_PRS)
   const hiddenCount = () => prs().length - visiblePrs().length
-  let history = ""
+  let history: PullRequestRef[] = []
   const refresh = async () => {
-    const refs = uniquePullRequests(extractPullRequests(`${history}\n${props.text()}`))
+    const refs = uniquePullRequests([...history, ...props.refs()])
     const results = await Promise.all(refs.map(fetchPullRequest))
     setUnavailable(refs.length > 0 && results.every((result) => result === undefined))
     setPrs(results.filter((result): result is PullRequest => result !== undefined && result.state !== "CLOSED"))
   }
   createEffect(() => {
-    props.text()
+    props.refs()
     void refresh()
   })
   onMount(() => {
@@ -125,7 +133,7 @@ function PullRequests(props: {
         <Show when={!unavailable() && prs().length === 0}><text fg={props.subdued}>No PRs</text></Show>
         <For each={visiblePrs()}>{(pr) => (
           <text fg={props.subdued} wrapMode="none">
-            • <a href={pr.url}>#{pr.number} {truncate(pr.title, 24)}</a>{" "}
+            • <a href={pr.url}>{truncate(pr.title, 32)}</a>{" "}
             <span style={{ fg: pr.state === "OPEN" && !pr.isDraft ? props.subdued : props.link }}>
               {pullRequestStatus(pr)}
             </span>
@@ -143,8 +151,8 @@ function setup(context: Context) {
     append: "sidebar.content",
     render: ({ sessionID }) => (
       <PullRequests
-        text={() => textFromV2(context.data.session.message.list(sessionID) as readonly Message[])}
-        history={() => textFromV2History(context, sessionID)}
+        refs={() => refsFromV2(context.data.session.message.list(sessionID) as readonly Message[])}
+        history={() => refsFromV2History(context, sessionID)}
         foreground={context.theme.text.default}
         subdued={context.theme.text.subdued}
         link={context.theme.markdown.link}
@@ -160,8 +168,8 @@ const tui: TuiPlugin = async (api) => {
     slots: {
       sidebar_content(_ctx, props) {
         return <PullRequests
-          text={() => textFromV1(api, props.session_id)}
-          history={() => textFromV1History(api, props.session_id)}
+          refs={() => refsFromV1(api, props.session_id)}
+          history={() => refsFromV1History(api, props.session_id)}
           foreground={api.theme.current.text}
           subdued={api.theme.current.textMuted}
           link={api.theme.current.markdownLink}
