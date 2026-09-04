@@ -86,8 +86,6 @@ function PullRequests(props: {
   foreground: string | RGBA
   subdued: string | RGBA
   link: string | RGBA
-  success: string | RGBA
-  warning: string | RGBA
 }) {
   const [open, setOpen] = createSignal(true)
   const [prs, setPrs] = createSignal<PullRequest[]>([])
@@ -123,7 +121,7 @@ function PullRequests(props: {
         <For each={prs()}>{(pr) => (
           <text fg={props.subdued}>
             • <a href={pr.url}>#{pr.number} {truncate(pr.title, 32)}</a>{" "}
-            <span style={{ fg: pr.state === "MERGED" ? props.success : pr.isDraft ? props.warning : props.subdued }}>
+            <span style={{ fg: pr.state === "OPEN" && !pr.isDraft ? props.subdued : props.link }}>
               {pullRequestStatus(pr)}
             </span>
           </text>
@@ -144,8 +142,6 @@ function setup(context: Context) {
         foreground={context.theme.text.default}
         subdued={context.theme.text.subdued}
         link={context.theme.markdown.link}
-        success={context.theme.status.success}
-        warning={context.theme.status.warning}
       />
     ),
   })
@@ -163,8 +159,6 @@ const tui: TuiPlugin = async (api) => {
           foreground={api.theme.current.text}
           subdued={api.theme.current.textMuted}
           link={api.theme.current.markdownLink}
-          success={api.theme.current.success}
-          warning={api.theme.current.warning}
         />
       },
     },
