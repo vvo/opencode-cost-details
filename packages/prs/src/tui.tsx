@@ -102,13 +102,16 @@ function PullRequestRow(props: {
     if (!hovered() || props.pr.title.length <= width()) return
     delay = setTimeout(() => {
       const cycleLength = props.pr.title.length + 3
+      let step = 0
       interval = setInterval(() => {
-        setOffset((value) => {
-          if (value + 1 < cycleLength) return value + 1
-          clearInterval(interval)
-          interval = undefined
-          return 0
-        })
+        step++
+        if (step < cycleLength) {
+          setOffset(step)
+          return
+        }
+        clearInterval(interval)
+        interval = undefined
+        setOffset(0)
       }, MARQUEE_STEP_MS)
     }, MARQUEE_DELAY_MS)
   })
