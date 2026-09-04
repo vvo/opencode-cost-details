@@ -6,7 +6,6 @@ import type { RGBA } from "@opentui/core"
 import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
 import type { Plugin } from "plugin-v2/tui"
 import {
-  extractPullRequests,
   extractCreatedPullRequests,
   marquee,
   pullRequestStatus,
@@ -22,6 +21,17 @@ const MARQUEE_DELAY_MS = 500
 const MARQUEE_STEP_MS = 120
 type Context = Plugin.Context
 type Message = { type?: string; content?: unknown[] }
+type ShellToolPart = {
+  type?: string
+  name?: string
+  tool?: string
+  state?: {
+    status?: string
+    input?: { command?: string }
+    content?: unknown[]
+    output?: string
+  }
+}
 type SessionCache = {
   history: PullRequestRef[]
   historyPromise?: Promise<PullRequestRef[]>
@@ -33,7 +43,7 @@ type SessionCache = {
 
 const sessionCache = new Map<string, SessionCache>()
 
-function cacheFor(sessionID: string): SessionCache {
+function getSessionCache(sessionID: string): SessionCache {
   let cache = sessionCache.get(sessionID)
   if (!cache) {
     cache = { history: [], prs: [], refsKey: "", unavailable: false }
@@ -43,7 +53,31 @@ function cacheFor(sessionID: string): SessionCache {
 }
 
 function samePullRequest(left: PullRequest, right: PullRequest): boolean {
-  return left.url === right.url && left.title === right.title && left.state === right.state && left.isDraft === right.isDraft
+  return (
+    left.url === right.url &&
+    left.title === right.title &&
+    left.state === right.state &&
+    left.isDraft === right.isDraft
+  )
+}
+
+function pullRequestRefsKey(refs: Iterable<PullRequestRef>): string {
+  return uniquePullRequests(refs).map((ref) => ref.url).join("\n")
+}
+
+function mergePullRequests(
+  refs: PullRequestRef[],
+  results: (PullRequest | undefined)[],
+  cached: PullRequest[],
+): PullRequest[] {
+  const previous = new Map(cached.map((pr) => [pr.url, pr]))
+  return results
+    .map((result, index) => {
+      const existing = previous.get(refs[index].url)
+      if (!result) return existing
+      return existing && samePullRequest(existing, result) ? existing : result
+    })
+    .filter((result): result is PullRequest => result !== undefined && result.state !== "CLOSED")
 }
 
 function PullRequestRow(props: { pr: PullRequest; subdued: string | RGBA; link: string | RGBA }) {
@@ -101,16 +135,12 @@ function refsFromV2(messages: readonly Message[]): PullRequestRef[] {
     if (message.type !== "assistant") continue
     for (const content of message.content ?? []) {
       if (!content || typeof content !== "object") continue
-      const part = content as {
-        type?: string
-        name?: string
-        state?: { status?: string; input?: { command?: string }; content?: unknown[] }
-      }
+      const part = content as ShellToolPart
       if (part.type !== "tool" || part.name !== "shell" || part.state?.status !== "completed") continue
       refs.push(...extractCreatedPullRequests(part.state.input?.command ?? "", JSON.stringify(part.state.content)))
     }
   }
-  return refs.flat()
+  return refs
 }
 
 function refsFromV1(api: TuiPluginApi, sessionID: string): PullRequestRef[] {
@@ -122,7 +152,7 @@ function refsFromV1(api: TuiPluginApi, sessionID: string): PullRequestRef[] {
       refs.push(...extractCreatedPullRequests(input.command ?? "", part.state.output))
     }
   }
-  return refs.flat()
+  return refs
 }
 
 async function refsFromV2History(context: Context, sessionID: string): Promise<PullRequestRef[]> {
@@ -142,16 +172,12 @@ async function refsFromV1History(api: TuiPluginApi, sessionID: string): Promise<
   const response = await api.client.session.messages({ sessionID })
   const refs: PullRequestRef[] = []
   for (const item of response.data ?? []) {
-    for (const part of item.parts as {
-      type?: string
-      tool?: string
-      state?: { status?: string; input?: { command?: string }; output?: string }
-    }[]) {
+    for (const part of item.parts as ShellToolPart[]) {
       if (part.type !== "tool" || part.tool !== "shell" || part.state?.status !== "completed") continue
       refs.push(...extractCreatedPullRequests(part.state.input?.command ?? "", part.state.output ?? ""))
     }
   }
-  return refs.flat()
+  return refs
 }
 
 function PullRequests(props: {
@@ -162,14 +188,14 @@ function PullRequests(props: {
   subdued: string | RGBA
   link: string | RGBA
 }) {
-  const cache = cacheFor(props.sessionID)
+  const cache = getSessionCache(props.sessionID)
   const [open, setOpen] = createSignal(true)
   const [prs, setPrs] = createSignal<PullRequest[]>(cache.prs)
   const [unavailable, setUnavailable] = createSignal(cache.unavailable)
   const visiblePrs = () => prs().slice(-MAX_VISIBLE_PRS)
   const hiddenCount = () => prs().length - visiblePrs().length
   let mounted = true
-  let observedRefsKey = uniquePullRequests(props.refs()).map((ref) => ref.url).join("\n")
+  let observedRefsKey = pullRequestRefsKey(props.refs())
   const showCache = () => {
     if (!mounted) return
     setPrs(cache.prs)
@@ -177,20 +203,13 @@ function PullRequests(props: {
   }
   const refresh = async (force = false) => {
     const refs = uniquePullRequests([...cache.history, ...props.refs()])
-    const refsKey = refs.map((ref) => ref.url).join("\n")
+    const refsKey = pullRequestRefsKey(refs)
     if (!force && refsKey === cache.refsKey) return
     if (!cache.refreshPromise) {
       cache.refreshPromise = Promise.all(refs.map(fetchPullRequest)).then((results) => {
         const failed = refs.length > 0 && results.every((result) => result === undefined)
         if (!failed || cache.prs.length === 0) {
-          const previous = new Map(cache.prs.map((pr) => [pr.url, pr]))
-          const next = results
-            .map((result, index) => {
-              const cached = previous.get(refs[index].url)
-              if (!result) return cached
-              return cached && samePullRequest(cached, result) ? cached : result
-            })
-            .filter((result): result is PullRequest => result !== undefined && result.state !== "CLOSED")
+          const next = mergePullRequests(refs, results, cache.prs)
           if (next.length !== cache.prs.length || next.some((pr, index) => pr !== cache.prs[index])) cache.prs = next
         }
         cache.unavailable = failed && cache.prs.length === 0
@@ -203,7 +222,7 @@ function PullRequests(props: {
     showCache()
   }
   createEffect(() => {
-    const refsKey = uniquePullRequests(props.refs()).map((ref) => ref.url).join("\n")
+    const refsKey = pullRequestRefsKey(props.refs())
     if (refsKey === observedRefsKey) return
     observedRefsKey = refsKey
     void refresh()
