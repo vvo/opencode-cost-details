@@ -3,8 +3,8 @@
   "version": "0.0.0",
   "description": "OpenCode TUI plugin that shows GitHub pull requests referenced by the current session",
   "type": "module",
-  "exports": { "./tui": "./dist/tui.js" },
-  "files": ["dist"],
+  "exports": { ".": "./dist/index.js", "./tui": "./dist/tui.js" },
+  "files": ["dist", "README.md"],
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc",

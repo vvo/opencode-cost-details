@@ -5,7 +5,7 @@ import typescript from "@babel/preset-typescript"
 import solid from "babel-preset-solid"
 
 const root = resolve(import.meta.dirname, "..")
-for (const module of ["tui.tsx", "prs.ts"]) {
+for (const module of ["index.ts", "tui.tsx", "prs.ts"]) {
   const input = resolve(root, "src", module)
   const output = resolve(root, "dist", module.replace(/\.tsx?$/, ".js"))
   const result = await transformAsync(await readFile(input, "utf8"), {

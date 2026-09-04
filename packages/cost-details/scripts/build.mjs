@@ -10,7 +10,7 @@ const root = resolve(import.meta.dirname, "..")
 
 // Every module reachable from the entrypoint has to be emitted, not just the
 // entrypoint: dist/tui.js imports ./turns.js at runtime.
-const modules = ["tui.tsx", "turns.ts"]
+const modules = ["index.ts", "tui.tsx", "turns.ts"]
 
 for (const module of modules) {
   const input = resolve(root, "src", module)

@@ -4,10 +4,12 @@
   "description": "OpenCode TUI plugin: adds current and previous turn cost to the sidebar Context section",
   "type": "module",
   "exports": {
+    ".": "./dist/index.js",
     "./tui": "./dist/tui.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",

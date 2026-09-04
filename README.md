@@ -36,6 +36,21 @@ pnpm test
 
 Packages live under `packages/`. Each package builds its TypeScript and JSX into `dist/` before publishing because OpenCode loads published plugins from `node_modules`.
 
+To use both plugins from this checkout:
+
+```sh
+pnpm dev:link
+pnpm dev
+```
+
+`dev:link` configures both compiled plugin directories in `cli.json` and removes the published versions. `dev` rebuilds both plugins when their source changes. Restart the OpenCode client after a rebuild to load it.
+
+Restore the published configuration with:
+
+```sh
+pnpm dev:unlink
+```
+
 ## Releasing
 
 Releases use [Changesets](https://changesets.dev) and npm trusted publishing. There is no npm token in the repository.

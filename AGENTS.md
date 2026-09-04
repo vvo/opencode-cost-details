@@ -6,6 +6,7 @@ This repository publishes independent OpenCode TUI plugins from `packages/`.
 
 - Use pnpm for workspace commands.
 - Run `pnpm typecheck` and `pnpm test` before committing.
+- Run `pnpm dev:link` once and `pnpm dev` while iterating in OpenCode.
 - Add a Changeset for package behavior changes. Skip it for docs and tooling only.
 
 ## Plugin compatibility
