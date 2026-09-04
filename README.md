@@ -8,7 +8,12 @@ Small TUI plugins for [OpenCode](https://opencode.ai). Each package supports Ope
 
 Shows the current and previous prompt-turn cost in the sidebar Context section.
 
-<a href="packages/cost-details"><img src="assets/cost-details.png" alt="Cost details in the OpenCode sidebar" width="640"></a>
+<a href="packages/cost-details">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/cost-details-dark.png">
+    <img src="assets/cost-details-light.png" alt="Cost details in the OpenCode sidebar" width="640">
+  </picture>
+</a>
 
 ```sh
 opencode2 plugin add opencode-cost-details
@@ -18,7 +23,12 @@ opencode2 plugin add opencode-cost-details
 
 Shows GitHub pull requests opened by the current session. Every title links to GitHub.
 
-<a href="packages/prs"><img src="assets/prs-hover.gif" alt="Pull requests opened by an OpenCode session" width="640"></a>
+<a href="packages/prs">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/prs-hover-dark.gif">
+    <img src="assets/prs-hover-light.gif" alt="Pull requests opened by an OpenCode session" width="640">
+  </picture>
+</a>
 
 ```sh
 opencode2 plugin add opencode-prs

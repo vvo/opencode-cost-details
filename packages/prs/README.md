@@ -2,7 +2,10 @@
 
 [OpenCode](https://opencode.ai) TUI plugin that lists GitHub pull requests opened by the current session.
 
-<img src="../../assets/prs-hover.gif" alt="Pull request titles scrolling on hover in the OpenCode sidebar" width="640">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../assets/prs-hover-dark.gif">
+  <img src="../../assets/prs-hover-light.gif" alt="Pull request titles scrolling on hover in the OpenCode sidebar" width="640">
+</picture>
 
 The sidebar section is collapsible. Each pull request uses a full-width linked title with its muted number and colored status below. Hover a clipped title to scroll through its full text once.
 

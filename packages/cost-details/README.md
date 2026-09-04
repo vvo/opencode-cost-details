@@ -2,7 +2,10 @@
 
 Part of [vvo/opencode-plugins](https://github.com/vvo/opencode-plugins).
 
-<img src="../../assets/cost-details.png" alt="Cost details in the OpenCode sidebar" width="640">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../assets/cost-details-dark.png">
+  <img src="../../assets/cost-details-light.png" alt="Cost details in the OpenCode sidebar" width="640">
+</picture>
 
 [OpenCode](https://opencode.ai) TUI plugin that shows how much each prompt turn costs, right in the sidebar:
 
