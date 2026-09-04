@@ -4,7 +4,7 @@
 
 ![Pull request titles scrolling on hover in the OpenCode sidebar](../../assets/prs-hover.gif)
 
-The sidebar section is collapsible. Each compact row shows a muted PR number, linked title, and colored draft, open, or merged status. Hover a clipped title to scroll through its full text.
+The sidebar section is collapsible. Each pull request uses a full-width linked title with its muted number and colored status below. Hover a clipped title to scroll through its full text once.
 
 ## Install
 

@@ -82,6 +82,7 @@ function mergePullRequests(
 
 function PullRequestRow(props: {
   pr: PullRequest
+  numberWidth: number
   subdued: string | RGBA
   link: string | RGBA
   draft: string | RGBA
@@ -100,7 +101,18 @@ function PullRequestRow(props: {
     setOffset(0)
     if (!hovered() || props.pr.title.length <= width()) return
     delay = setTimeout(() => {
-      interval = setInterval(() => setOffset((value) => value + 1), MARQUEE_STEP_MS)
+      const cycleLength = props.pr.title.length + 3
+      let step = 0
+      interval = setInterval(() => {
+        step++
+        if (step < cycleLength) {
+          setOffset(step)
+          return
+        }
+        clearInterval(interval)
+        interval = undefined
+        setOffset(0)
+      }, MARQUEE_STEP_MS)
     }, MARQUEE_DELAY_MS)
   })
   onCleanup(() => {
@@ -115,17 +127,20 @@ function PullRequestRow(props: {
 
   return (
     <box
-      flexDirection="row"
+      flexDirection="column"
       minWidth={0}
       onMouseOver={() => setHovered(true)}
       onMouseOut={() => setHovered(false)}
     >
-      <text fg={props.subdued} flexShrink={0}>• #{props.pr.number} </text>
-      <box flexGrow={1} minWidth={0} overflow="hidden" onSizeChange={function () { setWidth(this.width) }}>
-        <text fg={props.link} wrapMode="none"><a href={props.pr.url}>{marquee(props.pr.title, width(), offset())}</a></text>
+      <box flexDirection="row" minWidth={0}>
+        <text fg={props.subdued} flexShrink={0}>• </text>
+        <box flexGrow={1} minWidth={0} overflow="hidden" onSizeChange={function () { setWidth(this.width) }}>
+          <text fg={props.link} wrapMode="none"><a href={props.pr.url}>{marquee(props.pr.title, width(), offset())}</a></text>
+        </box>
       </box>
-      <text fg={statusColor()} flexShrink={0}>
-        {" "}{pullRequestStatus(props.pr)}
+      <text fg={props.subdued} marginLeft={2}>
+        #{String(props.pr.number).padStart(props.numberWidth)}
+        <span style={{ fg: statusColor() }}> · {pullRequestStatus(props.pr)}</span>
       </text>
     </box>
   )
@@ -208,6 +223,7 @@ function PullRequests(props: {
   const [prs, setPrs] = createSignal<PullRequest[]>(cache.prs)
   const [unavailable, setUnavailable] = createSignal(cache.unavailable)
   const visiblePrs = () => prs().slice(-MAX_VISIBLE_PRS)
+  const numberWidth = () => Math.max(1, ...visiblePrs().map((pr) => String(pr.number).length))
   const hiddenCount = () => prs().length - visiblePrs().length
   let mounted = true
   let observedRefsKey = pullRequestRefsKey(props.refs())
@@ -264,6 +280,7 @@ function PullRequests(props: {
         <For each={visiblePrs()}>{(pr) => (
           <PullRequestRow
             pr={pr}
+            numberWidth={numberWidth()}
             subdued={props.subdued}
             link={props.link}
             draft={props.draft}
