@@ -26,6 +26,8 @@ Then restart OpenCode. The plugin requires an installed and authenticated [GitHu
 
 The plugin finds successful `gh pr create` calls made by the session. It asks `gh` for the current title and state. Closed pull requests are hidden, while merged pull requests remain visible. The sidebar shows the five most recently opened pull requests.
 
+Results are cached by session. Switching tabs shows the previous result immediately and refreshes stale GitHub data in the background.
+
 One published package supports OpenCode 1 and OpenCode 2.
 
 ## Development

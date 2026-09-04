@@ -23,6 +23,26 @@ const MARQUEE_DELAY_MS = 500
 const MARQUEE_STEP_MS = 120
 type Context = Plugin.Context
 type Message = { type?: string; content?: unknown[] }
+type SessionCache = {
+  history: PullRequestRef[]
+  historyPromise?: Promise<PullRequestRef[]>
+  prs: PullRequest[]
+  refsKey: string
+  refreshedAt: number
+  unavailable: boolean
+  refreshPromise?: Promise<void>
+}
+
+const sessionCache = new Map<string, SessionCache>()
+
+function cacheFor(sessionID: string): SessionCache {
+  let cache = sessionCache.get(sessionID)
+  if (!cache) {
+    cache = { history: [], prs: [], refsKey: "", refreshedAt: 0, unavailable: false }
+    sessionCache.set(sessionID, cache)
+  }
+  return cache
+}
 
 function PullRequestRow(props: { pr: PullRequest; subdued: string | RGBA; link: string | RGBA }) {
   const [hovered, setHovered] = createSignal(false)
@@ -133,35 +153,60 @@ async function refsFromV1History(api: TuiPluginApi, sessionID: string): Promise<
 }
 
 function PullRequests(props: {
+  sessionID: string
   refs: Accessor<PullRequestRef[]>
   history: () => Promise<PullRequestRef[]>
   foreground: string | RGBA
   subdued: string | RGBA
   link: string | RGBA
 }) {
+  const cache = cacheFor(props.sessionID)
   const [open, setOpen] = createSignal(true)
-  const [prs, setPrs] = createSignal<PullRequest[]>([])
-  const [unavailable, setUnavailable] = createSignal(false)
+  const [prs, setPrs] = createSignal<PullRequest[]>(cache.prs)
+  const [unavailable, setUnavailable] = createSignal(cache.unavailable)
   const visiblePrs = () => prs().slice(-MAX_VISIBLE_PRS)
   const hiddenCount = () => prs().length - visiblePrs().length
-  let history: PullRequestRef[] = []
-  const refresh = async () => {
-    const refs = uniquePullRequests([...history, ...props.refs()])
-    const results = await Promise.all(refs.map(fetchPullRequest))
-    setUnavailable(refs.length > 0 && results.every((result) => result === undefined))
-    setPrs(results.filter((result): result is PullRequest => result !== undefined && result.state !== "CLOSED"))
+  let mounted = true
+  const showCache = () => {
+    if (!mounted) return
+    setPrs(cache.prs)
+    setUnavailable(cache.unavailable)
+  }
+  const refresh = async (force = false) => {
+    const refs = uniquePullRequests([...cache.history, ...props.refs()])
+    const refsKey = refs.map((ref) => ref.url).join("\n")
+    if (!force && refsKey === cache.refsKey && Date.now() - cache.refreshedAt < REFRESH_MS) {
+      showCache()
+      return
+    }
+    if (!cache.refreshPromise) {
+      cache.refreshPromise = Promise.all(refs.map(fetchPullRequest)).then((results) => {
+        cache.unavailable = refs.length > 0 && results.every((result) => result === undefined)
+        cache.prs = results.filter((result): result is PullRequest => result !== undefined && result.state !== "CLOSED")
+        cache.refsKey = refsKey
+        cache.refreshedAt = Date.now()
+      }).finally(() => {
+        cache.refreshPromise = undefined
+      })
+    }
+    await cache.refreshPromise
+    showCache()
   }
   createEffect(() => {
     props.refs()
     void refresh()
   })
   onMount(() => {
-    void props.history().then((value) => {
-      history = value
+    cache.historyPromise ??= props.history()
+    void cache.historyPromise.then((value) => {
+      cache.history = value
       void refresh()
     })
-    const interval = setInterval(() => void refresh(), REFRESH_MS)
-    onCleanup(() => clearInterval(interval))
+    const interval = setInterval(() => void refresh(true), REFRESH_MS)
+    onCleanup(() => {
+      mounted = false
+      clearInterval(interval)
+    })
   })
   return (
     <box flexDirection="column">
@@ -187,6 +232,7 @@ function setup(context: Context) {
     append: "sidebar.content",
     render: ({ sessionID }) => (
       <PullRequests
+        sessionID={sessionID}
         refs={() => refsFromV2(context.data.session.message.list(sessionID) as readonly Message[])}
         history={() => refsFromV2History(context, sessionID)}
         foreground={context.theme.text.default}
@@ -204,6 +250,7 @@ const tui: TuiPlugin = async (api) => {
     slots: {
       sidebar_content(_ctx, props) {
         return <PullRequests
+          sessionID={props.session_id}
           refs={() => refsFromV1(api, props.session_id)}
           history={() => refsFromV1History(api, props.session_id)}
           foreground={api.theme.current.text}
