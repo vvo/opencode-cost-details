@@ -80,7 +80,14 @@ function mergePullRequests(
     .filter((result): result is PullRequest => result !== undefined && result.state !== "CLOSED")
 }
 
-function PullRequestRow(props: { pr: PullRequest; subdued: string | RGBA; link: string | RGBA }) {
+function PullRequestRow(props: {
+  pr: PullRequest
+  subdued: string | RGBA
+  link: string | RGBA
+  draft: string | RGBA
+  open: string | RGBA
+  merged: string | RGBA
+}) {
   const [hovered, setHovered] = createSignal(false)
   const [width, setWidth] = createSignal(1)
   const [offset, setOffset] = createSignal(0)
@@ -101,6 +108,11 @@ function PullRequestRow(props: { pr: PullRequest; subdued: string | RGBA; link: 
     clearInterval(interval)
   })
 
+  const statusColor = () => {
+    if (props.pr.state === "MERGED") return props.merged
+    return props.pr.isDraft ? props.draft : props.open
+  }
+
   return (
     <box
       flexDirection="row"
@@ -108,11 +120,11 @@ function PullRequestRow(props: { pr: PullRequest; subdued: string | RGBA; link: 
       onMouseOver={() => setHovered(true)}
       onMouseOut={() => setHovered(false)}
     >
-      <text fg={props.subdued} flexShrink={0}>• </text>
+      <text fg={props.subdued} flexShrink={0}>• #{props.pr.number} </text>
       <box flexGrow={1} minWidth={0} overflow="hidden" onSizeChange={function () { setWidth(this.width) }}>
         <text fg={props.link} wrapMode="none"><a href={props.pr.url}>{marquee(props.pr.title, width(), offset())}</a></text>
       </box>
-      <text fg={props.pr.state === "OPEN" && !props.pr.isDraft ? props.subdued : props.link} flexShrink={0}>
+      <text fg={statusColor()} flexShrink={0}>
         {" "}{pullRequestStatus(props.pr)}
       </text>
     </box>
@@ -187,6 +199,9 @@ function PullRequests(props: {
   foreground: string | RGBA
   subdued: string | RGBA
   link: string | RGBA
+  draft: string | RGBA
+  open: string | RGBA
+  merged: string | RGBA
 }) {
   const cache = getSessionCache(props.sessionID)
   const [open, setOpen] = createSignal(true)
@@ -247,7 +262,14 @@ function PullRequests(props: {
         <Show when={unavailable()}><text fg={props.subdued}>GitHub unavailable</text></Show>
         <Show when={!unavailable() && prs().length === 0}><text fg={props.subdued}>No PRs</text></Show>
         <For each={visiblePrs()}>{(pr) => (
-          <PullRequestRow pr={pr} subdued={props.subdued} link={props.link} />
+          <PullRequestRow
+            pr={pr}
+            subdued={props.subdued}
+            link={props.link}
+            draft={props.draft}
+            open={props.open}
+            merged={props.merged}
+          />
         )}</For>
         <Show when={hiddenCount() > 0}><text fg={props.subdued}>+{hiddenCount()} more</text></Show>
       </Show>
@@ -267,6 +289,9 @@ function setup(context: Context) {
         foreground={context.theme.text.default}
         subdued={context.theme.text.subdued}
         link={context.theme.markdown.link}
+        draft={context.theme.text.feedback.warning.default}
+        open={context.theme.text.feedback.info.default}
+        merged={context.theme.text.feedback.success.default}
       />
     ),
   })
@@ -285,6 +310,9 @@ const tui: TuiPlugin = async (api) => {
           foreground={api.theme.current.text}
           subdued={api.theme.current.textMuted}
           link={api.theme.current.markdownLink}
+          draft={api.theme.current.warning}
+          open={api.theme.current.info}
+          merged={api.theme.current.success}
         />
       },
     },

@@ -16,9 +16,9 @@ opencode2 plugin add opencode-cost-details
 
 ### [opencode-prs](packages/prs)
 
-Shows open GitHub pull requests referenced by the current session. Every title links to GitHub.
+Shows GitHub pull requests opened by the current session. Every title links to GitHub.
 
-[![Open pull requests in the OpenCode sidebar](assets/prs.png)](packages/prs)
+[![Pull requests opened by an OpenCode session](assets/prs-hover.gif)](packages/prs)
 
 ```sh
 opencode2 plugin add opencode-prs
