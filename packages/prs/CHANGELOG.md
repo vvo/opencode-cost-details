@@ -1,5 +1,11 @@
 # opencode-prs
 
+## 0.1.3
+
+### Patch Changes
+
+- a1422c7: Refresh PR statuses every minute while a session tab remains active.
+
 ## 0.1.2
 
 ### Patch Changes
