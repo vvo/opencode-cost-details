@@ -24,7 +24,7 @@ Then restart OpenCode. The plugin requires an installed and authenticated [GitHu
 
 ## How it works
 
-The plugin finds GitHub pull request URLs in user messages, assistant replies, and completed tool output. It asks `gh` for the current title and state. Closed pull requests are hidden, while merged pull requests remain visible.
+The plugin finds GitHub pull request URLs in visible user messages and assistant replies. It asks `gh` for the current title and state. Closed pull requests are hidden, while merged pull requests remain visible. The sidebar shows the five most recently referenced pull requests.
 
 One published package supports OpenCode 1 and OpenCode 2.
 

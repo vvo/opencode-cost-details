@@ -17,6 +17,7 @@ import {
 const execFileAsync = promisify(execFile)
 const REFRESH_MS = 60_000
 const MAX_HISTORY_PAGES = 50
+const MAX_VISIBLE_PRS = 5
 type Context = Plugin.Context
 type Message = { type?: string; text?: string; content?: unknown[] }
 
@@ -33,12 +34,12 @@ async function fetchPullRequest(ref: PullRequestRef): Promise<PullRequest | unde
 function textFromV2(messages: readonly Message[]): string {
   const chunks: string[] = []
   for (const message of messages) {
-    if (typeof message.text === "string") chunks.push(message.text)
+    if (message.type === "user" && typeof message.text === "string") chunks.push(message.text)
+    if (message.type !== "assistant") continue
     for (const content of message.content ?? []) {
       if (!content || typeof content !== "object") continue
-      const part = content as { type?: string; text?: string; state?: { status?: string; content?: unknown[] } }
-      if (typeof part.text === "string") chunks.push(part.text)
-      if (part.type === "tool" && part.state?.status === "completed") chunks.push(JSON.stringify(part.state.content))
+      const part = content as { type?: string; text?: string }
+      if (part.type === "text" && typeof part.text === "string") chunks.push(part.text)
     }
   }
   return chunks.join("\n")
@@ -47,10 +48,9 @@ function textFromV2(messages: readonly Message[]): string {
 function textFromV1(api: TuiPluginApi, sessionID: string): string {
   const chunks: string[] = []
   for (const message of api.state.session.messages(sessionID)) {
+    if (message.role !== "user" && message.role !== "assistant") continue
     for (const part of api.state.part(message.id)) {
-      if ((part.type === "text" || part.type === "reasoning") && "text" in part) chunks.push(part.text)
-      if (part.type === "tool" && part.state.status === "completed") chunks.push(part.state.output, part.state.title)
-      if (part.type === "subtask") chunks.push(part.prompt, part.description)
+      if (part.type === "text" && "text" in part) chunks.push(part.text)
     }
   }
   return chunks.join("\n")
@@ -74,8 +74,11 @@ async function textFromV1History(api: TuiPluginApi, sessionID: string): Promise<
   const chunks: string[] = []
   for (const item of response.data ?? []) {
     const info = item.info as { role?: string; text?: string }
+    if (info.role !== "user" && info.role !== "assistant") continue
     if (typeof info.text === "string") chunks.push(info.text)
-    chunks.push(JSON.stringify(item.parts))
+    for (const part of item.parts as { type?: string; text?: string }[]) {
+      if (part.type === "text" && typeof part.text === "string") chunks.push(part.text)
+    }
   }
   return chunks.join("\n")
 }
@@ -90,6 +93,8 @@ function PullRequests(props: {
   const [open, setOpen] = createSignal(true)
   const [prs, setPrs] = createSignal<PullRequest[]>([])
   const [unavailable, setUnavailable] = createSignal(false)
+  const visiblePrs = () => prs().slice(-MAX_VISIBLE_PRS)
+  const hiddenCount = () => prs().length - visiblePrs().length
   let history = ""
   const refresh = async () => {
     const refs = uniquePullRequests(extractPullRequests(`${history}\n${props.text()}`))
@@ -118,14 +123,15 @@ function PullRequests(props: {
       <Show when={open()}>
         <Show when={unavailable()}><text fg={props.subdued}>GitHub unavailable</text></Show>
         <Show when={!unavailable() && prs().length === 0}><text fg={props.subdued}>No PRs</text></Show>
-        <For each={prs()}>{(pr) => (
-          <text fg={props.subdued}>
-            • <a href={pr.url}>#{pr.number} {truncate(pr.title, 32)}</a>{" "}
+        <For each={visiblePrs()}>{(pr) => (
+          <text fg={props.subdued} wrapMode="none">
+            • <a href={pr.url}>#{pr.number} {truncate(pr.title, 24)}</a>{" "}
             <span style={{ fg: pr.state === "OPEN" && !pr.isDraft ? props.subdued : props.link }}>
               {pullRequestStatus(pr)}
             </span>
           </text>
         )}</For>
+        <Show when={hiddenCount() > 0}><text fg={props.subdued}>+{hiddenCount()} more</text></Show>
       </Show>
     </box>
   )
