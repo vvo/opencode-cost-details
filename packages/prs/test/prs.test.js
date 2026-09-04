@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { extractCreatedPullRequests, extractPullRequests, marquee, pullRequestStatus, sortPullRequests, truncate, uniquePullRequests } from "../dist/prs.js"
+import { extractCreatedPullRequests, extractPullRequests, marquee, pullRequestStatus, slackPullRequest, sortPullRequests, truncate, uniquePullRequests } from "../dist/prs.js"
 
 test("extracts and normalizes GitHub pull request links", () => {
   assert.deepEqual(extractPullRequests("See https://github.com/vvo/opencode-plugins/pull/12/files"), [{
@@ -37,7 +37,7 @@ test("scrolls long titles", () => {
 test("sorts open, draft, and merged PRs by recency", () => {
   const pr = (number, state, isDraft, createdAt) => ({
     owner: "vvo", repo: "repo", number, url: `https://github.com/vvo/repo/pull/${number}`,
-    title: String(number), state, isDraft, createdAt,
+    title: String(number), state, isDraft, createdAt, additions: 4, deletions: 2,
   })
   const sorted = sortPullRequests([
     pr(1, "MERGED", false, "2026-09-04T10:00:00Z"),
@@ -46,4 +46,14 @@ test("sorts open, draft, and merged PRs by recency", () => {
     pr(4, "OPEN", false, "2026-09-04T11:00:00Z"),
   ])
   assert.deepEqual(sorted.map(({ number }) => number), [4, 3, 2, 1])
+})
+
+test("formats a PR for Slack", () => {
+  const pr = {
+    owner: "vvo", repo: "opencode-plugins", number: 22,
+    url: "https://github.com/vvo/opencode-plugins/pull/22",
+    title: "lower the cursor", state: "MERGED", isDraft: false,
+    createdAt: "2026-09-04T10:00:00Z", additions: 4, deletions: 4,
+  }
+  assert.equal(slackPullRequest(pr), ":pr-merged: vvo/opencode-plugins <https://github.com/vvo/opencode-plugins/pull/22|*lower the cursor*> +4 -4")
 })
