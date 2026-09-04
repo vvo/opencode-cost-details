@@ -42,6 +42,10 @@ function cacheFor(sessionID: string): SessionCache {
   return cache
 }
 
+function samePullRequest(left: PullRequest, right: PullRequest): boolean {
+  return left.url === right.url && left.title === right.title && left.state === right.state && left.isDraft === right.isDraft
+}
+
 function PullRequestRow(props: { pr: PullRequest; subdued: string | RGBA; link: string | RGBA }) {
   const [hovered, setHovered] = createSignal(false)
   const [width, setWidth] = createSignal(1)
@@ -180,9 +184,14 @@ function PullRequests(props: {
         const failed = refs.length > 0 && results.every((result) => result === undefined)
         if (!failed || cache.prs.length === 0) {
           const previous = new Map(cache.prs.map((pr) => [pr.url, pr]))
-          cache.prs = results
-            .map((result, index) => result ?? previous.get(refs[index].url))
+          const next = results
+            .map((result, index) => {
+              const cached = previous.get(refs[index].url)
+              if (!result) return cached
+              return cached && samePullRequest(cached, result) ? cached : result
+            })
             .filter((result): result is PullRequest => result !== undefined && result.state !== "CLOSED")
+          if (next.length !== cache.prs.length || next.some((pr, index) => pr !== cache.prs[index])) cache.prs = next
         }
         cache.unavailable = failed && cache.prs.length === 0
         cache.refsKey = refsKey
