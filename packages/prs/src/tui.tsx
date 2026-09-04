@@ -26,6 +26,7 @@ type SessionCache = {
   history: PullRequestRef[]
   historyPromise?: Promise<PullRequestRef[]>
   prs: PullRequest[]
+  refsKey: string
   unavailable: boolean
   refreshPromise?: Promise<void>
 }
@@ -35,7 +36,7 @@ const sessionCache = new Map<string, SessionCache>()
 function cacheFor(sessionID: string): SessionCache {
   let cache = sessionCache.get(sessionID)
   if (!cache) {
-    cache = { history: [], prs: [], unavailable: false }
+    cache = { history: [], prs: [], refsKey: "", unavailable: false }
     sessionCache.set(sessionID, cache)
   }
   return cache
@@ -164,17 +165,27 @@ function PullRequests(props: {
   const visiblePrs = () => prs().slice(-MAX_VISIBLE_PRS)
   const hiddenCount = () => prs().length - visiblePrs().length
   let mounted = true
+  let observedRefsKey = uniquePullRequests(props.refs()).map((ref) => ref.url).join("\n")
   const showCache = () => {
     if (!mounted) return
     setPrs(cache.prs)
     setUnavailable(cache.unavailable)
   }
-  const refresh = async () => {
+  const refresh = async (force = false) => {
     const refs = uniquePullRequests([...cache.history, ...props.refs()])
+    const refsKey = refs.map((ref) => ref.url).join("\n")
+    if (!force && refsKey === cache.refsKey) return
     if (!cache.refreshPromise) {
       cache.refreshPromise = Promise.all(refs.map(fetchPullRequest)).then((results) => {
-        cache.unavailable = refs.length > 0 && results.every((result) => result === undefined)
-        cache.prs = results.filter((result): result is PullRequest => result !== undefined && result.state !== "CLOSED")
+        const failed = refs.length > 0 && results.every((result) => result === undefined)
+        if (!failed || cache.prs.length === 0) {
+          const previous = new Map(cache.prs.map((pr) => [pr.url, pr]))
+          cache.prs = results
+            .map((result, index) => result ?? previous.get(refs[index].url))
+            .filter((result): result is PullRequest => result !== undefined && result.state !== "CLOSED")
+        }
+        cache.unavailable = failed && cache.prs.length === 0
+        cache.refsKey = refsKey
       }).finally(() => {
         cache.refreshPromise = undefined
       })
@@ -183,14 +194,16 @@ function PullRequests(props: {
     showCache()
   }
   createEffect(() => {
-    props.refs()
+    const refsKey = uniquePullRequests(props.refs()).map((ref) => ref.url).join("\n")
+    if (refsKey === observedRefsKey) return
+    observedRefsKey = refsKey
     void refresh()
   })
   onMount(() => {
     cache.historyPromise ??= props.history()
     void cache.historyPromise.then((value) => {
       cache.history = value
-      void refresh()
+      void refresh(true)
     })
     onCleanup(() => {
       mounted = false
