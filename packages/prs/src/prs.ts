@@ -4,6 +4,8 @@ export type PullRequest = PullRequestRef & {
   state: "OPEN" | "CLOSED" | "MERGED"
   isDraft: boolean
   createdAt: string
+  additions: number
+  deletions: number
 }
 
 export function pullRequestStatus(pr: Pick<PullRequest, "state" | "isDraft">): "draft" | "open" | "merged" | "closed" {
@@ -19,6 +21,11 @@ export function sortPullRequests(prs: PullRequest[]): PullRequest[] {
     if (status !== 0) return status
     return Date.parse(right.createdAt) - Date.parse(left.createdAt)
   })
+}
+
+export function slackPullRequest(pr: PullRequest): string {
+  const status = pullRequestStatus(pr)
+  return `:pr-${status}: ${pr.owner}/${pr.repo} <${pr.url}|*${pr.title}*> +${pr.additions} -${pr.deletions}`
 }
 
 const GITHUB_PR_URL = /https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)(?:\b|\/)/g

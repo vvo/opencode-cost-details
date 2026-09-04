@@ -9,6 +9,7 @@ import {
   extractCreatedPullRequests,
   marquee,
   pullRequestStatus,
+  slackPullRequest,
   sortPullRequests,
   uniquePullRequests,
   type PullRequest,
@@ -60,7 +61,9 @@ function samePullRequest(left: PullRequest, right: PullRequest): boolean {
     left.title === right.title &&
     left.state === right.state &&
     left.isDraft === right.isDraft &&
-    left.createdAt === right.createdAt
+    left.createdAt === right.createdAt &&
+    left.additions === right.additions &&
+    left.deletions === right.deletions
   )
 }
 
@@ -91,6 +94,7 @@ function PullRequestRow(props: {
   draft: string | RGBA
   open: string | RGBA
   merged: string | RGBA
+  copy: (text: string) => boolean
 }) {
   const [hovered, setHovered] = createSignal(false)
   const [width, setWidth] = createSignal(1)
@@ -141,18 +145,21 @@ function PullRequestRow(props: {
           <text fg={props.link} wrapMode="none"><a href={props.pr.url}>{marquee(props.pr.title, width(), offset())}</a></text>
         </box>
       </box>
-      <text fg={props.subdued} marginLeft={2}>
-        #{String(props.pr.number).padStart(props.numberWidth)}
-        <span style={{ fg: statusColor() }}> · {pullRequestStatus(props.pr)}</span>
-      </text>
+      <box flexDirection="row" marginLeft={2}>
+        <text fg={props.subdued}>
+          #{String(props.pr.number).padStart(props.numberWidth)}
+          <span style={{ fg: statusColor() }}> · {pullRequestStatus(props.pr)}</span>
+        </text>
+        <text fg={props.subdued} onMouseUp={() => props.copy(slackPullRequest(props.pr))}> · ⧉</text>
+      </box>
     </box>
   )
 }
 
 async function fetchPullRequest(ref: PullRequestRef): Promise<PullRequest | undefined> {
   try {
-    const { stdout } = await execFileAsync("gh", ["pr", "view", ref.url, "--json", "title,state,url,number,isDraft,createdAt"])
-    const data = JSON.parse(stdout) as Pick<PullRequest, "title" | "state" | "url" | "number" | "isDraft" | "createdAt">
+    const { stdout } = await execFileAsync("gh", ["pr", "view", ref.url, "--json", "title,state,url,number,isDraft,createdAt,additions,deletions"])
+    const data = JSON.parse(stdout) as Pick<PullRequest, "title" | "state" | "url" | "number" | "isDraft" | "createdAt" | "additions" | "deletions">
     return { ...ref, ...data }
   } catch {
     return undefined
@@ -220,6 +227,7 @@ function PullRequests(props: {
   draft: string | RGBA
   open: string | RGBA
   merged: string | RGBA
+  copy: (text: string) => boolean
 }) {
   const cache = getSessionCache(props.sessionID)
   const [open, setOpen] = createSignal(true)
@@ -290,6 +298,7 @@ function PullRequests(props: {
             draft={props.draft}
             open={props.open}
             merged={props.merged}
+            copy={props.copy}
           />
         )}</For>
       </Show>
@@ -312,6 +321,14 @@ function setup(context: Context) {
         draft={context.theme.text.feedback.warning.default}
         open={context.theme.text.feedback.info.default}
         merged={context.theme.text.feedback.success.default}
+        copy={(text) => {
+          const copied = context.renderer.copyToClipboardOSC52(text)
+          context.ui.toast.show({
+            message: copied ? "Copied to clipboard" : "Could not copy to clipboard",
+            variant: copied ? "success" : "error",
+          })
+          return copied
+        }}
       />
     ),
   })
@@ -333,6 +350,14 @@ const tui: TuiPlugin = async (api) => {
           draft={api.theme.current.warning}
           open={api.theme.current.info}
           merged={api.theme.current.success}
+          copy={(text) => {
+            const copied = api.renderer.copyToClipboardOSC52(text)
+            api.ui.toast({
+              message: copied ? "Copied to clipboard" : "Could not copy to clipboard",
+              variant: copied ? "success" : "error",
+            })
+            return copied
+          }}
         />
       },
     },
