@@ -2,4 +2,4 @@
 "opencode-prs": patch
 ---
 
-Use compact PR rows and show draft, open, and merged states.
+Show compact draft, open, and merged rows for pull requests opened by the session, with stale-while-revalidate caching on tab focus.
