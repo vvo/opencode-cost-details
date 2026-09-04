@@ -1,5 +1,13 @@
 # opencode-prs
 
+## 0.1.2
+
+### Patch Changes
+
+- a4903bc: Restore PR numbers, separate link and status colors, and update screenshots from the actual TUI.
+- 6dceca5: Show up to ten PRs, ordered by open, draft, then merged and newest first within each group.
+- 2fbc1f7: Give PR titles a full row, align metadata below, and scroll long titles once per hover.
+
 ## 0.1.1
 
 ### Patch Changes
