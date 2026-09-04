@@ -1,63 +1,15 @@
 {
-  "name": "opencode-cost-details",
-  "version": "0.4.0",
-  "description": "OpenCode TUI plugin: adds current and previous turn cost to the sidebar Context section",
+  "name": "opencode-plugins",
+  "private": true,
   "type": "module",
-  "exports": {
-    "./tui": "./dist/tui.js"
-  },
-  "files": [
-    "dist"
-  ],
+  "packageManager": "pnpm@10.15.1",
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "typecheck": "tsc",
-    "test": "npm run build && node --test test/turns.test.js",
-    "release": "changeset publish",
-    "prepublishOnly": "npm run typecheck && npm test"
-  },
-  "keywords": [
-    "opencode",
-    "opencode-plugin",
-    "tui",
-    "cost",
-    "tokens"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/vvo/opencode-cost-details.git"
-  },
-  "author": "Vincent Voyer <vincent@codeagain.com>",
-  "license": "MIT",
-  "engines": {
-    "opencode": ">=1.18.0"
-  },
-  "peerDependencies": {
-    "@opentui/core": ">=0.5.8",
-    "@opentui/solid": ">=0.5.8",
-    "solid-js": ">=1.9.0"
-  },
-  "peerDependenciesMeta": {
-    "@opentui/core": {
-      "optional": true
-    },
-    "@opentui/solid": {
-      "optional": true
-    },
-    "solid-js": {
-      "optional": true
-    }
+    "build": "pnpm --recursive build",
+    "typecheck": "pnpm --recursive typecheck",
+    "test": "pnpm --recursive test",
+    "release": "changeset publish"
   },
   "devDependencies": {
-    "@babel/core": "^7.28.0",
-    "@babel/preset-typescript": "^7.27.1",
-    "@changesets/cli": "^3.0.1",
-    "@opencode-ai/plugin": "1.18.25",
-    "@opentui/core": "^0.5.9",
-    "@opentui/solid": "^0.5.9",
-    "babel-preset-solid": "^1.9.12",
-    "plugin-v2": "npm:@opencode-ai/plugin@^0.0.0-beta-18721",
-    "solid-js": "^1.9.12",
-    "typescript": "^5.9.3"
+    "@changesets/cli": "^3.0.1"
   }
 }

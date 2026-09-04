@@ -1,0 +1,162 @@
+/** @jsxImportSource @opentui/solid */
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
+import { createEffect, createSignal, For, onCleanup, onMount, Show, type Accessor } from "solid-js"
+import type { RGBA } from "@opentui/core"
+import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
+import type { Plugin } from "plugin-v2/tui"
+import { extractPullRequests, truncate, uniquePullRequests, type PullRequest, type PullRequestRef } from "./prs.js"
+
+const execFileAsync = promisify(execFile)
+const REFRESH_MS = 60_000
+const MAX_HISTORY_PAGES = 50
+type Context = Plugin.Context
+type Message = { type?: string; text?: string; content?: unknown[] }
+
+async function fetchPullRequest(ref: PullRequestRef): Promise<PullRequest | undefined> {
+  try {
+    const { stdout } = await execFileAsync("gh", ["pr", "view", ref.url, "--json", "title,state,url,number"])
+    const data = JSON.parse(stdout) as Pick<PullRequest, "title" | "state" | "url" | "number">
+    return { ...ref, ...data }
+  } catch {
+    return undefined
+  }
+}
+
+function openUrl(url: string) {
+  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open"
+  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url]
+  execFile(command, args, () => {})
+}
+
+function textFromV2(messages: readonly Message[]): string {
+  const chunks: string[] = []
+  for (const message of messages) {
+    if (typeof message.text === "string") chunks.push(message.text)
+    for (const content of message.content ?? []) {
+      if (!content || typeof content !== "object") continue
+      const part = content as { type?: string; text?: string; state?: { status?: string; content?: unknown[] } }
+      if (typeof part.text === "string") chunks.push(part.text)
+      if (part.type === "tool" && part.state?.status === "completed") chunks.push(JSON.stringify(part.state.content))
+    }
+  }
+  return chunks.join("\n")
+}
+
+function textFromV1(api: TuiPluginApi, sessionID: string): string {
+  const chunks: string[] = []
+  for (const message of api.state.session.messages(sessionID)) {
+    for (const part of api.state.part(message.id)) {
+      if ((part.type === "text" || part.type === "reasoning") && "text" in part) chunks.push(part.text)
+      if (part.type === "tool" && part.state.status === "completed") chunks.push(part.state.output, part.state.title)
+      if (part.type === "subtask") chunks.push(part.prompt, part.description)
+    }
+  }
+  return chunks.join("\n")
+}
+
+async function textFromV2History(context: Context, sessionID: string): Promise<string> {
+  const chunks: string[] = []
+  let cursor: string | undefined
+  let page = 0
+  do {
+    const response = await context.client.message.list({ sessionID, limit: 200, ...(cursor ? { cursor } : {}) })
+    chunks.push(textFromV2(response.data as readonly Message[]))
+    cursor = response.cursor.next ?? undefined
+    page++
+  } while (cursor && page < MAX_HISTORY_PAGES)
+  return chunks.join("\n")
+}
+
+async function textFromV1History(api: TuiPluginApi, sessionID: string): Promise<string> {
+  const response = await api.client.session.messages({ sessionID })
+  const chunks: string[] = []
+  for (const item of response.data ?? []) {
+    const info = item.info as { role?: string; text?: string }
+    if (typeof info.text === "string") chunks.push(info.text)
+    chunks.push(JSON.stringify(item.parts))
+  }
+  return chunks.join("\n")
+}
+
+function PullRequests(props: {
+  text: Accessor<string>
+  history: () => Promise<string>
+  foreground: string | RGBA
+  subdued: string | RGBA
+  link: string | RGBA
+}) {
+  const [open, setOpen] = createSignal(true)
+  const [prs, setPrs] = createSignal<PullRequest[]>([])
+  const [unavailable, setUnavailable] = createSignal(false)
+  let history = ""
+  const refresh = async () => {
+    const refs = uniquePullRequests(extractPullRequests(`${history}\n${props.text()}`))
+    const results = await Promise.all(refs.map(fetchPullRequest))
+    setUnavailable(refs.length > 0 && results.every((result) => result === undefined))
+    setPrs(results.filter((result): result is PullRequest => result?.state === "OPEN"))
+  }
+  createEffect(() => {
+    props.text()
+    void refresh()
+  })
+  onMount(() => {
+    void props.history().then((value) => {
+      history = value
+      void refresh()
+    })
+    const interval = setInterval(() => void refresh(), REFRESH_MS)
+    onCleanup(() => clearInterval(interval))
+  })
+  return (
+    <box flexDirection="column">
+      <box flexDirection="row" gap={1} onMouseUp={() => setOpen((value) => !value)}>
+        <text fg={props.foreground}>{open() ? "▼" : "▶"}</text>
+        <text fg={props.foreground}><b>PRs ({prs().length})</b></text>
+      </box>
+      <Show when={open()}>
+        <Show when={unavailable()}><text fg={props.subdued}>GitHub unavailable</text></Show>
+        <Show when={!unavailable() && prs().length === 0}><text fg={props.subdued}>No open PRs</text></Show>
+        <For each={prs()}>{(pr) => (
+          <text fg={props.link} onMouseUp={() => openUrl(pr.url)}>#{pr.number} {truncate(pr.title, 42)}</text>
+        )}</For>
+      </Show>
+    </box>
+  )
+}
+
+function setup(context: Context) {
+  if (typeof context.ui?.slot !== "function") return
+  return context.ui.slot({
+    append: "sidebar.content",
+    render: ({ sessionID }) => (
+      <PullRequests
+        text={() => textFromV2(context.data.session.message.list(sessionID) as readonly Message[])}
+        history={() => textFromV2History(context, sessionID)}
+        foreground={context.theme.text.default}
+        subdued={context.theme.text.subdued}
+        link={context.theme.markdown.link}
+      />
+    ),
+  })
+}
+
+const tui: TuiPlugin = async (api) => {
+  if (typeof api.slots?.register !== "function") return
+  api.slots.register({
+    order: 240,
+    slots: {
+      sidebar_content(_ctx, props) {
+        return <PullRequests
+          text={() => textFromV1(api, props.session_id)}
+          history={() => textFromV1History(api, props.session_id)}
+          foreground={api.theme.current.text}
+          subdued={api.theme.current.textMuted}
+          link={api.theme.current.markdownLink}
+        />
+      },
+    },
+  })
+}
+
+export default { id: "opencode-prs", tui, setup }
